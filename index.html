@@ -1,6 +1,7 @@
 <!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ハゼモト建設｜歯科クリニック 見積アプリ（サーバ計算版）</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{--blue:#1f4e78;--accent:#c00000;--bg:#f4f6f9;--line:#dfe4ea}
 *{box-sizing:border-box}body{margin:0;font-family:"Yu Gothic","Hiragino Sans",sans-serif;background:var(--bg);color:#222}
@@ -32,7 +33,19 @@ button.sec{background:#6b7a90}button:hover{opacity:.9}
 .savebox button{background:#1f7a4d}.savebox .safe{color:#375623;font-weight:700}
 .status{font-size:11px;color:#888}
 </style></head><body>
-<header><h1>ハゼモト建設｜歯科クリニック 見積アプリ</h1><div class="sub">サーバ計算版（原価・単価はSupabase内で計算／ブラウザに出しません）　<a href="activities.html" style="color:#cfe0f5">📊 活動DB（蓄積ビュー）→</a></div>
+<div id="loginOverlay" style="position:fixed;inset:0;background:#1f4e78;display:none;align-items:center;justify-content:center;z-index:1000">
+  <div style="background:#fff;border-radius:12px;padding:28px;width:340px;max-width:90%">
+    <div style="font-size:18px;font-weight:700;color:#1f4e78;margin-bottom:14px">ハゼモト建設｜歯科見積 ログイン</div>
+    <label style="font-size:12px;color:#555">メールアドレス</label>
+    <input type="email" id="loginEmail" autocomplete="username" style="width:100%;padding:9px;margin:2px 0 8px;border:1px solid #dfe4ea;border-radius:6px;font-size:14px">
+    <label style="font-size:12px;color:#555">パスワード</label>
+    <input type="password" id="loginPass" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()" style="width:100%;padding:9px;margin:2px 0 12px;border:1px solid #dfe4ea;border-radius:6px;font-size:14px">
+    <button onclick="doLogin()" style="width:100%;padding:11px;background:#1f4e78;color:#fff;border:0;border-radius:7px;font-size:14px;cursor:pointer">ログイン</button>
+    <div id="loginMsg" style="color:#c00000;font-size:12px;margin-top:8px"></div>
+    <div style="color:#888;font-size:11px;margin-top:10px">社内アカウントでログインしてください。</div>
+  </div>
+</div>
+<header><h1>ハゼモト建設｜歯科クリニック 見積アプリ</h1><div class="sub">サーバ計算版（原価・単価はSupabase内で計算／ブラウザに出しません）　<a href="activities.html" style="color:#cfe0f5">📊 活動DB（蓄積ビュー）→</a>　<a href="#" onclick="doLogout();return false" style="color:#cfe0f5">ログアウト</a></div>
 <div style="margin-top:8px;background:#1f7a4d;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;font-weight:700">
 🔒 社内限定｜このアプリは<u>原価・単価を持ちません</u>（サーバ側で計算）。URLは社内のみで共有してください。</div></header>
 <div class="wrap">
@@ -135,6 +148,17 @@ const SB_URL="https://rrfeqnzxhbxntyewgeyj.supabase.co";
 const PUB_KEY="sb_publishable_GE3cACbThh42Ln5fBSmH-Q_VMfKD0UD";
 const APP_TOKEN="hzmt-dental-8f3a2c";
 const FN=SB_URL+"/functions/v1/estimate";
+const sbAuth=window.supabase.createClient(SB_URL,PUB_KEY);
+let AUTHTOKEN=PUB_KEY;
+async function initAuth(){var s=(await sbAuth.auth.getSession()).data.session;
+  if(s){AUTHTOKEN=s.access_token;document.getElementById('loginOverlay').style.display='none';run();}
+  else{document.getElementById('loginOverlay').style.display='flex';}}
+async function doLogin(){var msg=document.getElementById('loginMsg');msg.textContent='認証中…';msg.style.color='#555';
+  var em=document.getElementById('loginEmail').value.trim(),pw=document.getElementById('loginPass').value;
+  var {data,error}=await sbAuth.auth.signInWithPassword({email:em,password:pw});
+  if(error){msg.style.color='#c00000';msg.textContent='ログイン失敗：'+error.message;return;}
+  AUTHTOKEN=data.session.access_token;msg.textContent='';document.getElementById('loginOverlay').style.display='none';run();}
+async function doLogout(){await sbAuth.auth.signOut();location.reload();}
 const PT={shinchiku:{genba:0.11,ippan:0.04,sekkei:0,usetype:'歯科新築',label:'木造新築',note:'延床・診察室数・チェア台数に連動',tsuboLo:110,tsuboHi:128,setLo:26,setHi:32,mgLo:0.18,mgHi:0.26},
           tenant:{genba:0.05,ippan:0.06,sekkei:500000,usetype:'歯科テナント内装',label:'テナント内装',note:'面積・室数連動／安西84万・中野106万で校正',tsuboLo:70,tsuboHi:118,setLo:0,setHi:0,mgLo:0.30,mgHi:0.42}};
 const PDEF_SHINCHIKU={nobiyuka:'189.63',kenchiku:'144.08',tsubo:'57.24',shinsatsu:'5',kodomo:'0',kyosei:'1',xray:'1',xarea:'21',shodoku:'1',gikou:'1',tearai:'8',toilet:'3',ac_s:'6',ac_k:'8'};
@@ -157,7 +181,7 @@ function reqBody(){const gm=document.getElementById('gmargin').value;
 
 async function run(){if(EDIT)return;const st=document.getElementById('status');st.textContent='計算中…';
   try{
-    const r=await fetch(FN,{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+PUB_KEY,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(reqBody())});
+    const r=await fetch(FN,{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(reqBody())});
     if(!r.ok)throw new Error('HTTP '+r.status);
     const d=await r.json();if(d.error)throw new Error(d.error);
     LAST=d;render(d);st.textContent='';
@@ -225,7 +249,7 @@ async function saveActivity(){const msg=document.getElementById('act_msg');
     unconfirmed:(document.getElementById('act_unconf').value||'').trim()||null};
   msg.style.color='#555';msg.textContent='保存中…';
   try{const r=await fetch(SB_URL+'/rest/v1/estimate_activities',{method:'POST',
-      headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+PUB_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(payload)});
+      headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(payload)});
     if(!r.ok)throw new Error(r.status+' '+(await r.text()));
     msg.style.color='#375623';msg.textContent='✓ 活動DBに記録（'+PT[CUR].label+'／'+cust+'）';
     ['act_customer','act_assume','act_unconf'].forEach(id=>document.getElementById(id).value='');
@@ -240,7 +264,7 @@ function exportXlsx(){if(!LAST){run();return;}const d=LAST;const aoa=[['ハゼ�
 // ===== 明細1行ずつ編集モード =====
 async function enterEdit(){var st=document.getElementById('status');st.textContent='明細を取得中…';
   var body=reqBody();body.detail=true;
-  try{var r=await fetch(FN,{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+PUB_KEY,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body)});
+  try{var r=await fetch(FN,{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body)});
     var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
     ELINES=d.lines||[];EMETA={genbaR:d.genbaR,ippanR:d.ippanR,sekkei:d.sekkei,opt:d.opt,tsubo:params().tsubo};
     EDIT=true;renderEdit();recalcEdit();
@@ -275,7 +299,7 @@ async function checkPower(){var el=document.getElementById('powerResult');el.inn
   var p=params();var ackw=num('e_ackw')||(num('ac_s')*5+num('ac_k')*3);
   var body={mode:(CUR==='tenant')?'reno':'new',nobiyuka:p.nobiyuka,existing_main_a:num('e_exist')||0,
     equipment:{chair:p.chair,xray:p.xray,cadcam:num('e_cadcam'),miele:num('e_miele'),compressor:num('e_comp'),blower_power:num('e_blowp'),blower_single:num('e_blows'),sterilizer:num('e_ster'),ac_kw:ackw}};
-  try{var r=await fetch(SB_URL+'/functions/v1/power-capacity',{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+PUB_KEY,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body)});
+  try{var r=await fetch(SB_URL+'/functions/v1/power-capacity',{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body)});
     var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
     var warn=d.shortage?'<div style="color:#c00000;font-weight:700">⚠ 既存主幹 容量不足 → 増設・九電申請 要</div>':'';
     el.innerHTML='<div style="background:#eef3f8;border:1px solid #9db4cf;border-radius:6px;padding:8px;font-size:12px;line-height:1.7">'
@@ -291,7 +315,7 @@ async function checkPower(){var el=document.getElementById('powerResult');el.inn
 function toB64(f){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result.split(',')[1]);};r.onerror=rej;r.readAsDataURL(f);});}
 async function sendPdf(file){var st=document.getElementById('aiStatus');st.textContent='図面を解析中…（Claude）';
   try{var b64=await toB64(file);
-    var r=await fetch(SB_URL+'/functions/v1/analyze-drawing',{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+PUB_KEY,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({pdf:b64})});
+    var r=await fetch(SB_URL+'/functions/v1/analyze-drawing',{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({pdf:b64})});
     var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
     var j=d.params||{};var keys=['nobiyuka','kenchiku','tsubo','shinsatsu','kodomo','kyosei','xray','xarea','shodoku','gikou','tearai','toilet','ac_s','ac_k'];
     var n=0;keys.forEach(function(k){if(j[k]!=null&&!isNaN(parseFloat(j[k]))){document.getElementById(k).value=j[k];n++;}});
@@ -312,5 +336,5 @@ function applyAutofill(){var st=document.getElementById('status');
   var n=0;keys.forEach(function(k){if(j[k]!=null&&!isNaN(parseFloat(j[k]))){document.getElementById(k).value=j[k];n++;}});
   run();st.textContent='✓ '+n+'項目を自動入力'+(j.summary?'（'+j.summary+'）':'');}
 document.querySelectorAll('#nobiyuka,#kenchiku,#tsubo,#shinsatsu,#kodomo,#kyosei,#xray,#xarea,#shodoku,#gikou,#tearai,#toilet,#ac_s,#ac_k,#gmargin,#genba,#ippan,#sekkei,#elec_override').forEach(el=>el.addEventListener('input',debounce));
-run();
+initAuth();
 </script></body></html>
