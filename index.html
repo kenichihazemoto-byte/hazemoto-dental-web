@@ -150,14 +150,15 @@ const APP_TOKEN="hzmt-dental-8f3a2c";
 const FN=SB_URL+"/functions/v1/estimate";
 const sbAuth=window.supabase.createClient(SB_URL,PUB_KEY);
 let AUTHTOKEN=PUB_KEY;
+function fillStaff(s){try{var u=s&&s.user;if(!u)return;var nm=(u.user_metadata&&u.user_metadata.name)||((u.email||'').split('@')[0]);var el=document.getElementById('act_staff');if(el&&!el.value)el.value=nm;}catch(e){}}
 async function initAuth(){var s=(await sbAuth.auth.getSession()).data.session;
-  if(s){AUTHTOKEN=s.access_token;document.getElementById('loginOverlay').style.display='none';run();}
+  if(s){AUTHTOKEN=s.access_token;document.getElementById('loginOverlay').style.display='none';fillStaff(s);run();}
   else{document.getElementById('loginOverlay').style.display='flex';}}
 async function doLogin(){var msg=document.getElementById('loginMsg');msg.textContent='認証中…';msg.style.color='#555';
   var em=document.getElementById('loginEmail').value.trim(),pw=document.getElementById('loginPass').value;
   var {data,error}=await sbAuth.auth.signInWithPassword({email:em,password:pw});
   if(error){msg.style.color='#c00000';msg.textContent='ログイン失敗：'+error.message;return;}
-  AUTHTOKEN=data.session.access_token;msg.textContent='';document.getElementById('loginOverlay').style.display='none';run();}
+  AUTHTOKEN=data.session.access_token;msg.textContent='';document.getElementById('loginOverlay').style.display='none';fillStaff(data.session);run();}
 async function doLogout(){await sbAuth.auth.signOut();location.reload();}
 const PT={shinchiku:{genba:0.11,ippan:0.04,sekkei:0,usetype:'歯科新築',label:'木造新築',note:'延床・診察室数・チェア台数に連動',tsuboLo:110,tsuboHi:128,setLo:26,setHi:32,mgLo:0.18,mgHi:0.26},
           tenant:{genba:0.05,ippan:0.06,sekkei:500000,usetype:'歯科テナント内装',label:'テナント内装',note:'面積・室数連動／安西84万・中野106万で校正',tsuboLo:70,tsuboHi:118,setLo:0,setHi:0,mgLo:0.30,mgHi:0.42}};
