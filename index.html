@@ -78,6 +78,23 @@ button.sec{background:#6b7a90}button:hover{opacity:.9}
   </div>
   <div style="margin-top:8px"><label>仕様グレード係数（テナント高仕様の補正）</label>
    <select id="specf" onchange="run()"><option value="1.00">標準（中野基準）×1.00</option><option value="1.10">中上位 ×1.10</option><option value="1.17">高仕様（安西級）×1.17</option><option value="1.30">最高級 ×1.30</option></select></div>
+  <h2 style="margin-top:16px">⚡ 電気容量チェック（初期確認・価格反映）</h2>
+  <div class="note" style="margin-bottom:6px">電気容量は最大の変動要因。医療機器から負荷を計算し、主幹A・幹線・動力盤・容量不足を確認して価格に反映します。</div>
+  <div class="grid">
+   <div><label>CAD/CAM(セレック)台</label><input type="number" id="e_cadcam" value="0"></div>
+   <div><label>ミーレ洗浄機 台</label><input type="number" id="e_miele" value="0"></div>
+   <div><label>コンプレッサー 台</label><input type="number" id="e_comp" value="1"></div>
+   <div><label>診療用ブロワ(3相)台</label><input type="number" id="e_blowp" value="1"></div>
+   <div><label>単相ブロワ 台</label><input type="number" id="e_blows" value="1"></div>
+   <div><label>滅菌器(リサ等)台</label><input type="number" id="e_ster" value="1"></div>
+   <div><label>空調電気kW(空欄=天カセ自動)</label><input type="number" id="e_ackw" placeholder="天カセ台数×馬力から自動"></div>
+   <div><label>既存主幹(A)※改装のみ</label><input type="number" id="e_exist" placeholder="例 60"></div>
+  </div>
+  <div style="margin-top:8px"><button onclick="checkPower()">⚡ 電気容量をチェック</button></div>
+  <div id="powerResult" class="note"></div>
+  <div style="margin-top:6px"><label>電気設備 上書き ¥（業者見積 or 上の目安・空欄=自動）</label><input type="number" id="elec_override" placeholder="空欄=自動計算"></div>
+  <div class="note">※空調kWは天カセ台数×馬力から自動換算。東京技研等の業者見積が出たら「上書き」に入れて価格反映。</div>
+
   <h2 style="margin-top:16px">② 高級仕様オプション</h2>
   <div id="optbox"><div class="note">（テナント内装はオプションなし）</div></div>
   <div style="margin-top:10px">
@@ -133,7 +150,7 @@ function params(){const shinsatsu=num('shinsatsu')+num('kodomo');const kyosei=nu
 function reqBody(){const gm=document.getElementById('gmargin').value;
   return {use_type:CUR,params:params(),gmargin:gm===''?null:parseFloat(gm),
     genbaR:document.getElementById('genba').value,ippanR:document.getElementById('ippan').value,
-    sekkei:num('sekkei'),specf:document.getElementById('specf').value,opts:OPTSTATE};}
+    sekkei:num('sekkei'),specf:document.getElementById('specf').value,opts:OPTSTATE,elec_override:num('elec_override')};}
 
 async function run(){const st=document.getElementById('status');st.textContent='計算中…';
   try{
@@ -217,6 +234,22 @@ function exportXlsx(){if(!LAST){run();return;}const d=LAST;const aoa=[['ハゼ�
   const ws=XLSX.utils.aoa_to_sheet(aoa);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'見積');
   XLSX.writeFile(wb,'歯科見積_'+new Date().toISOString().slice(0,10)+'.xlsx');}
 
+async function checkPower(){var el=document.getElementById('powerResult');el.innerHTML='電気容量を計算中…';
+  var p=params();var ackw=num('e_ackw')||(num('ac_s')*5+num('ac_k')*3);
+  var body={mode:(CUR==='tenant')?'reno':'new',nobiyuka:p.nobiyuka,existing_main_a:num('e_exist')||0,
+    equipment:{chair:p.chair,xray:p.xray,cadcam:num('e_cadcam'),miele:num('e_miele'),compressor:num('e_comp'),blower_power:num('e_blowp'),blower_single:num('e_blows'),sterilizer:num('e_ster'),ac_kw:ackw}};
+  try{var r=await fetch(SB_URL+'/functions/v1/power-capacity',{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+PUB_KEY,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
+    var warn=d.shortage?'<div style="color:#c00000;font-weight:700">⚠ 既存主幹 容量不足 → 増設・九電申請 要</div>':'';
+    el.innerHTML='<div style="background:#eef3f8;border:1px solid #9db4cf;border-radius:6px;padding:8px;font-size:12px;line-height:1.7">'
+      +'<b>電気容量サマリ（'+(body.mode==='new'?'新築':'改装')+'／空調'+ackw+'kW）</b><br>'
+      +'単相 '+d.single_kva+'kVA → 推奨主幹 <b>'+d.single_main_a+'A</b>／幹線 '+d.light_cable_sq+'sq<br>'
+      +'3相 '+d.three_kw+'kW → '+d.three_main_a+'A／動力盤 <b>'+(d.need_power_panel?'必要':'不要')+'</b>'+(d.power_cable_sq?'（幹線'+d.power_cable_sq+'sq）':'')+'<br>'
+      +'契約：'+d.contract.power+'<br>'+warn
+      +'電気設備 目安総額 <b>'+yen(d.elec_total)+'</b> '
+      +'<button style="margin:2px 0 0" onclick="document.getElementById(\'elec_override\').value='+d.elec_total+';run();">この目安を電気設備に反映</button>'
+      +'<div style="color:#888;margin-top:4px">'+d.notes.join('／')+'</div></div>';
+  }catch(e){el.innerHTML='⚠ '+e.message;}}
 function toB64(f){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result.split(',')[1]);};r.onerror=rej;r.readAsDataURL(f);});}
 async function sendPdf(file){var st=document.getElementById('aiStatus');st.textContent='図面を解析中…（Claude）';
   try{var b64=await toB64(file);
@@ -240,6 +273,6 @@ function applyAutofill(){var st=document.getElementById('status');
   var keys=['nobiyuka','kenchiku','tsubo','shinsatsu','kodomo','kyosei','xray','xarea','shodoku','gikou','tearai','toilet','ac_s','ac_k'];
   var n=0;keys.forEach(function(k){if(j[k]!=null&&!isNaN(parseFloat(j[k]))){document.getElementById(k).value=j[k];n++;}});
   run();st.textContent='✓ '+n+'項目を自動入力'+(j.summary?'（'+j.summary+'）':'');}
-document.querySelectorAll('#nobiyuka,#kenchiku,#tsubo,#shinsatsu,#kodomo,#kyosei,#xray,#xarea,#shodoku,#gikou,#tearai,#toilet,#ac_s,#ac_k,#gmargin,#genba,#ippan,#sekkei').forEach(el=>el.addEventListener('input',debounce));
+document.querySelectorAll('#nobiyuka,#kenchiku,#tsubo,#shinsatsu,#kodomo,#kyosei,#xray,#xarea,#shodoku,#gikou,#tearai,#toilet,#ac_s,#ac_k,#gmargin,#genba,#ippan,#sekkei,#elec_override').forEach(el=>el.addEventListener('input',debounce));
 run();
 </script></body></html>
