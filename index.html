@@ -124,6 +124,8 @@ button.sec{background:#6b7a90}button:hover{opacity:.9}
    <div class="note">※保存されるのは <b>売価・面積・パラメータ・前提・精度</b> のみ。<span class="safe">原価・粗利率は送信しません</span>。案件種別も自動記録。</div>
   </div>
   <h2>工種別内訳</h2>
+  <div style="margin-bottom:6px"><button onclick="enterEdit()">✏️ 明細編集</button><button class="sec" onclick="exitEdit()">🔄 パラメータ計算に戻す</button></div>
+  <div id="editWrap" style="display:none;overflow-x:auto"></div>
   <table id="tbl"><thead><tr><th class="l">工種</th><th>売金額(税抜)</th><th>構成比</th><th>粗利率</th></tr></thead><tbody></tbody></table>
 </div>
 </div>
@@ -138,6 +140,7 @@ const PT={shinchiku:{genba:0.11,ippan:0.04,sekkei:0,usetype:'歯科新築',label
 const PDEF_SHINCHIKU={nobiyuka:'189.63',kenchiku:'144.08',tsubo:'57.24',shinsatsu:'5',kodomo:'0',kyosei:'1',xray:'1',xarea:'21',shodoku:'1',gikou:'1',tearai:'8',toilet:'3',ac_s:'6',ac_k:'8'};
 const PIDS=Object.keys(PDEF_SHINCHIKU);
 let CUR='shinchiku', OPTSTATE={}, LAST=null, timer=null;
+let EDIT=false, ELINES=[], EMETA={};
 const num=id=>parseFloat(document.getElementById(id).value)||0;
 const yen=n=>'¥'+Math.round(n).toLocaleString('ja-JP');
 const man=n=>(n/10000).toFixed(1)+'万';
@@ -152,7 +155,7 @@ function reqBody(){const gm=document.getElementById('gmargin').value;
     genbaR:document.getElementById('genba').value,ippanR:document.getElementById('ippan').value,
     sekkei:num('sekkei'),specf:document.getElementById('specf').value,opts:OPTSTATE,elec_override:num('elec_override')};}
 
-async function run(){const st=document.getElementById('status');st.textContent='計算中…';
+async function run(){if(EDIT)return;const st=document.getElementById('status');st.textContent='計算中…';
   try{
     const r=await fetch(FN,{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+PUB_KEY,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(reqBody())});
     if(!r.ok)throw new Error('HTTP '+r.status);
@@ -233,6 +236,40 @@ function exportXlsx(){if(!LAST){run();return;}const d=LAST;const aoa=[['ハゼ�
   aoa.push([],['工事価格(税抜)',d.work],['税込',d.incl]);
   const ws=XLSX.utils.aoa_to_sheet(aoa);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'見積');
   XLSX.writeFile(wb,'歯科見積_'+new Date().toISOString().slice(0,10)+'.xlsx');}
+
+// ===== 明細1行ずつ編集モード =====
+async function enterEdit(){var st=document.getElementById('status');st.textContent='明細を取得中…';
+  var body=reqBody();body.detail=true;
+  try{var r=await fetch(FN,{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+PUB_KEY,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body)});
+    var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
+    ELINES=d.lines||[];EMETA={genbaR:d.genbaR,ippanR:d.ippanR,sekkei:d.sekkei,opt:d.opt,tsubo:params().tsubo};
+    EDIT=true;renderEdit();recalcEdit();
+    document.getElementById('tbl').style.display='none';document.getElementById('editWrap').style.display='block';
+    st.textContent='✏️ 明細編集モード：数量・単価を直接修正できます（自動計算は停止中）';
+  }catch(e){st.textContent='⚠ '+e.message;}}
+function renderEdit(){var groups={};ELINES.forEach(function(l,i){(groups[l.cat]=groups[l.cat]||[]).push(i);});
+  var h='<table><thead><tr><th class="l">工種／名称</th><th>数量</th><th>単位</th><th>単価</th><th>金額</th></tr></thead><tbody>';
+  Object.keys(groups).forEach(function(cat){var ct=ELINES[groups[cat][0]].cattitle;
+    h+='<tr style="background:#eef2f7;font-weight:700"><td class="l" colspan="5">'+cat+' '+ct+'</td></tr>';
+    groups[cat].forEach(function(i){var l=ELINES[i];
+      h+='<tr><td class="l" style="font-size:11px">'+l.name+(l.spec?'<br><span style="color:#888">'+l.spec+'</span>':'')+'</td>'
+        +'<td><input type="number" value="'+l.qty+'" style="width:66px;text-align:right;padding:3px" oninput="editLine('+i+',0,this.value)"></td>'
+        +'<td>'+l.unit+'</td>'
+        +'<td><input type="number" value="'+l.price+'" style="width:88px;text-align:right;padding:3px" oninput="editLine('+i+',1,this.value)"></td>'
+        +'<td id="amt'+i+'">'+yen(l.amount)+'</td></tr>';});});
+  h+='</tbody></table>';document.getElementById('editWrap').innerHTML=h;}
+function editLine(i,f,v){var fld=(f===0?'qty':'price');ELINES[i][fld]=parseFloat(v)||0;ELINES[i].amount=Math.round(ELINES[i].qty*ELINES[i].price);
+  document.getElementById('amt'+i).textContent=yen(ELINES[i].amount);recalcEdit();}
+function recalcEdit(){var m=EMETA;var direct=0;ELINES.forEach(function(l){direct+=l.amount;});
+  var genba=Math.round(direct*m.genbaR),ippan=Math.round(direct*m.ippanR);
+  var work=direct+genba+ippan+(m.sekkei||0)+(m.opt||0);var incl=Math.round(work*1.1);
+  document.getElementById('incl').textContent=yen(incl);
+  document.getElementById('excl').textContent=yen(work);
+  document.getElementById('tsuboUnit').textContent=m.tsubo?man(work/m.tsubo)+'/坪':'-';
+  document.getElementById('margin').textContent='編集中';
+  var sb=document.getElementById('specBadge');sb.textContent='✏️ 明細編集モード';sb.style.display='inline-block';
+  LAST=Object.assign({},LAST||{},{work:work,incl:incl});}
+function exitEdit(){if(!EDIT)return;EDIT=false;document.getElementById('editWrap').style.display='none';document.getElementById('editWrap').innerHTML='';document.getElementById('tbl').style.display='';document.getElementById('specBadge').style.display='none';run();}
 
 async function checkPower(){var el=document.getElementById('powerResult');el.innerHTML='電気容量を計算中…';
   var p=params();var ackw=num('e_ackw')||(num('ac_s')*5+num('ac_k')*3);
