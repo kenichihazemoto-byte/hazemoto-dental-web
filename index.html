@@ -283,7 +283,8 @@ async function checkPower(){var el=document.getElementById('powerResult');el.inn
       +'単相 '+d.single_kva+'kVA → 推奨主幹 <b>'+d.single_main_a+'A</b>／幹線 '+d.light_cable_sq+'sq<br>'
       +'3相 '+d.three_kw+'kW → '+d.three_main_a+'A／動力盤 <b>'+(d.need_power_panel?'必要':'不要')+'</b>'+(d.power_cable_sq?'（幹線'+d.power_cable_sq+'sq）':'')+'<br>'
       +'契約：'+d.contract.power+'<br>'+warn
-      +'電気設備 目安総額 <b>'+yen(d.elec_total)+'</b> '
+      +'電気設備 目安総額 <b>'+yen(d.elec_total)+'</b>（東京技研実単価）<br>'
+      +'<span style="color:#555;font-size:11px">内訳：電灯部'+yen(d.elec_breakdown['電灯_配線_器具'])+'／幹線・動力'+yen(d.elec_breakdown['幹線_動力ケーブル'])+'／盤類'+yen(d.elec_breakdown['盤類'])+(d.elec_breakdown['引込受電']?'／引込'+yen(d.elec_breakdown['引込受電']):'')+'</span><br>'
       +'<button style="margin:2px 0 0" onclick="document.getElementById(\'elec_override\').value='+d.elec_total+';run();">この目安を電気設備に反映</button>'
       +'<div style="color:#888;margin-top:4px">'+d.notes.join('／')+'</div></div>';
   }catch(e){el.innerHTML='⚠ '+e.message;}}
