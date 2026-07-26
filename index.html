@@ -1,0 +1,245 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ハゼモト建設｜歯科クリニック 見積アプリ（サーバ計算版）</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{--blue:#1f4e78;--accent:#c00000;--bg:#f4f6f9;--line:#dfe4ea}
+*{box-sizing:border-box}body{margin:0;font-family:"Yu Gothic","Hiragino Sans",sans-serif;background:var(--bg);color:#222}
+header{background:var(--blue);color:#fff;padding:14px 20px}
+header h1{margin:0;font-size:18px}header .sub{font-size:12px;opacity:.85}
+.wrap{display:flex;gap:16px;padding:16px;align-items:flex-start;flex-wrap:wrap}
+.panel{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px}
+.left{flex:1;min-width:320px;max-width:440px}.right{flex:2;min-width:340px}
+h2{font-size:14px;color:var(--blue);margin:4px 0 10px;border-bottom:2px solid var(--blue);padding-bottom:4px}
+label{display:block;font-size:12px;margin:8px 0 2px;color:#555}
+input[type=number],input[type=text],select{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;font-size:14px;background:#fff}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.opt{display:flex;align-items:center;gap:8px;font-size:13px;padding:4px 0;border-bottom:1px dashed var(--line)}
+.opt input{margin:0;width:auto}.opt .price{margin-left:auto;color:#555;font-variant-numeric:tabular-nums}
+.big{background:linear-gradient(135deg,#1f4e78,#2e75b6);color:#fff;border-radius:10px;padding:16px;text-align:center;margin-bottom:12px}
+.big .amt{font-size:30px;font-weight:700;font-variant-numeric:tabular-nums}.big .lbl{font-size:12px;opacity:.85}
+.big .row{display:flex;justify-content:space-around;margin-top:8px;font-size:13px}
+.big #specBadge{display:none;margin-top:8px;background:#ffd24a;color:#5a4600;font-size:12px;font-weight:800;padding:3px 12px;border-radius:14px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{border:1px solid var(--line);padding:5px 7px;text-align:right;font-variant-numeric:tabular-nums}
+th{background:#eef2f7;color:#333}td.l,th.l{text-align:left}
+.chip{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700}
+.ok{background:#e2efda;color:#375623}.warn{background:#fff2cc;color:#7f6000}.bad{background:#ffc7ce;color:#9c0006}.neu{background:#eef0f2;color:#5a6673}
+button{background:var(--blue);color:#fff;border:0;border-radius:7px;padding:9px 14px;font-size:13px;cursor:pointer;margin:4px 4px 0 0}
+button.sec{background:#6b7a90}button:hover{opacity:.9}
+.note{font-size:11px;color:#888;margin-top:8px;line-height:1.5}
+.savebox{margin-top:12px;border:2px solid var(--blue)!important}
+.savebox textarea{width:100%;height:42px;border:1px solid var(--line);border-radius:6px;padding:7px;font-size:13px;margin-top:2px}
+.savebox button{background:#1f7a4d}.savebox .safe{color:#375623;font-weight:700}
+.status{font-size:11px;color:#888}
+</style></head><body>
+<header><h1>ハゼモト建設｜歯科クリニック 見積アプリ</h1><div class="sub">サーバ計算版（原価・単価はSupabase内で計算／ブラウザに出しません）</div>
+<div style="margin-top:8px;background:#1f7a4d;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;font-weight:700">
+🔒 社内限定｜このアプリは<u>原価・単価を持ちません</u>（サーバ側で計算）。URLは社内のみで共有してください。</div></header>
+<div class="wrap">
+<div class="left panel">
+  <div style="background:#eef3f8;border:2px solid #1f4e78;border-radius:8px;padding:10px 12px;margin-bottom:12px">
+   <label style="font-weight:700;color:#1f4e78">案件種別（最初に選択）</label>
+   <select id="ptype" onchange="onType()"><option value="shinchiku">木造新築（例：椋野・赤間・児玉）</option><option value="tenant">テナント内装（例：安西・門司・中野）</option></select>
+   <div id="ptypeNote" class="note" style="margin-top:4px">※木造新築：延床・診察室数・チェア台数に連動</div>
+  </div>
+  <details open style="margin-bottom:10px"><summary style="cursor:pointer;color:#1f4e78;font-size:13px;font-weight:700">📄 図面から自動入力（PDFをアップロード）</summary>
+   <div id="drop" style="border:2px dashed #9db4cf;border-radius:8px;padding:14px;text-align:center;color:#5a6b80;font-size:13px;background:#f8fbff;cursor:pointer;margin-top:6px">
+     図面PDFをドロップ / クリックで選択<br><span style="font-size:11px">→ Claudeが延床・室数などを自動抽出（案件種別を先に選択）</span>
+     <input type="file" id="pdf" accept="application/pdf" style="display:none">
+   </div>
+   <div id="aiStatus" class="note"></div>
+   <details style="margin-top:4px"><summary style="cursor:pointer;font-size:11px;color:#888">うまく行かない時：Claudeの抽出結果(JSON)を貼り付け</summary>
+    <textarea id="autofill_json" style="width:100%;height:60px;border:1px solid var(--line);border-radius:6px;padding:8px;font-size:12px;margin-top:6px" placeholder='{"nobiyuka":62,"shinsatsu":3,"xray":1,"shodoku":1,"gikou":1,"toilet":1}'></textarea>
+    <button onclick="applyAutofill()">貼り付けから自動入力</button>
+   </details>
+  </details>
+  <h2>① 建物パラメータ</h2>
+  <div class="grid">
+   <div><label>延床/施工面積(㎡)</label><input type="number" id="nobiyuka" value="189.63" step="0.01"></div>
+   <div><label>建築面積(㎡)</label><input type="number" id="kenchiku" value="144.08" step="0.01"></div>
+   <div><label>坪</label><input type="number" id="tsubo" value="57.24" step="0.01"></div>
+   <div><label>大人診察室</label><input type="number" id="shinsatsu" value="5"></div>
+   <div><label>子供ブース</label><input type="number" id="kodomo" value="0"></div>
+   <div><label>矯正室</label><input type="number" id="kyosei" value="1"></div>
+   <div><label>X線室数</label><input type="number" id="xray" value="1"></div>
+   <div><label>X線防護面積㎡/室</label><input type="number" id="xarea" value="21"></div>
+   <div><label>消毒滅菌室</label><input type="number" id="shodoku" value="1"></div>
+   <div><label>技工室</label><input type="number" id="gikou" value="1"></div>
+   <div><label>手洗い数</label><input type="number" id="tearai" value="8"></div>
+   <div><label>トイレ数</label><input type="number" id="toilet" value="3"></div>
+   <div><label>天カセ 診療系(台)</label><input type="number" id="ac_s" value="6"></div>
+   <div><label>天カセ 共用系(台)</label><input type="number" id="ac_k" value="8"></div>
+  </div>
+  <div class="grid" style="margin-top:8px">
+   <div><label>全体粗利率(空欄=工種別)</label><input type="number" id="gmargin" step="0.01" placeholder="例 0.20"></div>
+   <div><label>現場管理費率(対直接)</label><input type="number" id="genba" value="0.11" step="0.01"></div>
+   <div><label>一般管理費率(対直接)</label><input type="number" id="ippan" value="0.04" step="0.01"></div>
+   <div><label>設計・確認(テナント)</label><input type="number" id="sekkei" value="0" step="10000"></div>
+  </div>
+  <div style="margin-top:8px"><label>仕様グレード係数（テナント高仕様の補正）</label>
+   <select id="specf" onchange="run()"><option value="1.00">標準（中野基準）×1.00</option><option value="1.10">中上位 ×1.10</option><option value="1.17">高仕様（安西級）×1.17</option><option value="1.30">最高級 ×1.30</option></select></div>
+  <h2 style="margin-top:16px">② 高級仕様オプション</h2>
+  <div id="optbox"><div class="note">（テナント内装はオプションなし）</div></div>
+  <div style="margin-top:10px">
+   <button onclick="run()">再計算</button>
+   <button class="sec" onclick="exportXlsx()">Excel出力</button>
+   <button class="sec" onclick="window.print()">PDF/印刷</button>
+   <span id="status" class="status"></span>
+  </div>
+</div>
+<div class="right panel">
+  <div class="big"><div class="lbl">御見積金額（税込・概算）</div><div class="amt" id="incl">-</div>
+   <div class="row"><span>税抜 <b id="excl">-</b></span><span>坪単価 <b id="tsuboUnit">-</b></span><span>粗利率 <b id="margin">-</b></span></div><div id="specBadge"></div></div>
+  <div id="valid"></div>
+  <div class="panel savebox">
+   <h2 style="margin-top:0">③ この概算を「活動DB」に記録（1タップ）</h2>
+   <div class="grid">
+    <div><label>案件名／顧客 <span style="color:#c00000">*</span></label><input type="text" id="act_customer" placeholder="例）中野歯科 新築"></div>
+    <div><label>担当者</label><input type="text" id="act_staff" placeholder="営業担当名"></div>
+   </div>
+   <div class="grid" style="margin-top:6px">
+    <div><label>概算精度</label><select id="act_acc"><option value="C">C：超初期（金額帯のみ）</option><option value="B" selected>B：一部未確認・前提つき</option><option value="A">A：主要条件 確認済み</option></select></div>
+    <div><label>ステータス</label><select id="act_status"><option value="概算" selected>概算</option><option value="提出済">提出済</option><option value="商談中">商談中</option><option value="受注">受注</option><option value="失注">失注</option><option value="保留">保留</option></select></div>
+   </div>
+   <label>前提条件</label><textarea id="act_assume" placeholder="例）既存電気容量を利用・動力新設なし"></textarea>
+   <label>未確認事項</label><textarea id="act_unconf" placeholder="例）チェア最終台数・X線室位置"></textarea>
+   <div style="margin-top:8px"><button onclick="saveActivity()">☁ 活動DBに保存</button> <span id="act_msg" class="note"></span></div>
+   <div class="note">※保存されるのは <b>売価・面積・パラメータ・前提・精度</b> のみ。<span class="safe">原価・粗利率は送信しません</span>。案件種別も自動記録。</div>
+  </div>
+  <h2>工種別内訳</h2>
+  <table id="tbl"><thead><tr><th class="l">工種</th><th>売金額(税抜)</th><th>構成比</th><th>粗利率</th></tr></thead><tbody></tbody></table>
+</div>
+</div>
+<script>
+// ===== 設定（公開キー・弱トークンのみ。原価・単価・マスタは一切持たない） =====
+const SB_URL="https://rrfeqnzxhbxntyewgeyj.supabase.co";
+const PUB_KEY="sb_publishable_GE3cACbThh42Ln5fBSmH-Q_VMfKD0UD";
+const APP_TOKEN="hzmt-dental-8f3a2c";
+const FN=SB_URL+"/functions/v1/estimate";
+const PT={shinchiku:{genba:0.11,ippan:0.04,sekkei:0,usetype:'歯科新築',label:'木造新築',note:'延床・診察室数・チェア台数に連動',tsuboLo:110,tsuboHi:128,setLo:26,setHi:32,mgLo:0.18,mgHi:0.26},
+          tenant:{genba:0.05,ippan:0.06,sekkei:500000,usetype:'歯科テナント内装',label:'テナント内装',note:'面積・室数連動／安西84万・中野106万で校正',tsuboLo:70,tsuboHi:118,setLo:0,setHi:0,mgLo:0.30,mgHi:0.42}};
+const PDEF_SHINCHIKU={nobiyuka:'189.63',kenchiku:'144.08',tsubo:'57.24',shinsatsu:'5',kodomo:'0',kyosei:'1',xray:'1',xarea:'21',shodoku:'1',gikou:'1',tearai:'8',toilet:'3',ac_s:'6',ac_k:'8'};
+const PIDS=Object.keys(PDEF_SHINCHIKU);
+let CUR='shinchiku', OPTSTATE={}, LAST=null, timer=null;
+const num=id=>parseFloat(document.getElementById(id).value)||0;
+const yen=n=>'¥'+Math.round(n).toLocaleString('ja-JP');
+const man=n=>(n/10000).toFixed(1)+'万';
+
+function params(){const shinsatsu=num('shinsatsu')+num('kodomo');const kyosei=num('kyosei');
+  return {nobiyuka:num('nobiyuka'),kenchiku:num('kenchiku'),tsubo:num('tsubo'),shinsatsu:shinsatsu,kyosei:kyosei,
+    chair:shinsatsu+kyosei,xray:num('xray'),xarea:num('xarea'),shodoku:num('shodoku'),gikou:num('gikou'),
+    tearai:num('tearai'),toilet:num('toilet'),ac_s:num('ac_s'),ac_k:num('ac_k')};}
+
+function reqBody(){const gm=document.getElementById('gmargin').value;
+  return {use_type:CUR,params:params(),gmargin:gm===''?null:parseFloat(gm),
+    genbaR:document.getElementById('genba').value,ippanR:document.getElementById('ippan').value,
+    sekkei:num('sekkei'),specf:document.getElementById('specf').value,opts:OPTSTATE};}
+
+async function run(){const st=document.getElementById('status');st.textContent='計算中…';
+  try{
+    const r=await fetch(FN,{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+PUB_KEY,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(reqBody())});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const d=await r.json();if(d.error)throw new Error(d.error);
+    LAST=d;render(d);st.textContent='';
+  }catch(e){st.textContent='⚠ '+e.message;}}
+function debounce(){clearTimeout(timer);timer=setTimeout(run,300);}
+
+function render(d){
+  document.getElementById('incl').textContent=yen(d.incl);
+  document.getElementById('excl').textContent=yen(d.work);
+  document.getElementById('tsuboUnit').textContent=d.tsuboUnitMan?man(d.tsuboUnitMan*10000)+'/坪':'-';
+  document.getElementById('margin').textContent=(d.margin*100).toFixed(1)+'%';
+  const sf=d.specFactor;const sb=document.getElementById('specBadge');const on=(sf&&sf!==1);
+  sb.textContent=on?('仕様グレード ×'+sf.toFixed(2)+' 適用中'):'';sb.style.display=on?'inline-block':'none';
+  // options
+  buildOpts(d.availOpts||[]);
+  // table
+  const tb=document.querySelector('#tbl tbody');tb.innerHTML='';
+  d.rows.forEach(r=>{const tr=document.createElement('tr');
+    tr.innerHTML='<td class="l">'+r.cat+' '+r.title+'</td><td>'+yen(r.sell)+'</td><td>'+(r.pct*100).toFixed(1)+'%</td><td>'+(r.margin*100).toFixed(0)+'%</td>';tb.appendChild(tr);});
+  [['諸経費(現場+一般)',d.genba+d.ippan],['設計・確認申請',d.sekkei],['高級ｵﾌﾟｼｮﾝ(採用)',d.opt]].forEach(x=>{if(x[1]>0){const tr=document.createElement('tr');
+    tr.innerHTML='<td class="l" style="background:#f6f8fb">'+x[0]+'</td><td>'+yen(x[1])+'</td><td>'+(x[1]/d.work*100).toFixed(1)+'%</td><td></td>';tb.appendChild(tr);}});
+  const tr=document.createElement('tr');tr.style.fontWeight='700';tr.style.background='#ffe699';
+  tr.innerHTML='<td class="l">工事価格 合計(税抜)</td><td>'+yen(d.work)+'</td><td>100%</td><td>'+(d.margin*100).toFixed(1)+'%</td>';tb.appendChild(tr);
+  // validity
+  const CF=PT[CUR];const tu=d.tsuboUnitMan||0, setPct=d.setsubiPct*100, shoPct=d.shoPct*100, mg=d.margin;
+  const chip=(c,w,l)=>'<span class="chip '+(c?'ok':(w?'warn':'bad'))+'">'+l+'</span>';
+  const chipN=l=>'<span class="chip neu">'+l+'</span>';
+  const cT=CF.tsuboLo>0?chip(tu>=CF.tsuboLo&&tu<=CF.tsuboHi,tu>=CF.tsuboLo-10&&tu<=CF.tsuboHi+7,'坪単価 '+tu.toFixed(0)+'万'):chipN('坪単価 '+tu.toFixed(0)+'万');
+  const cS=CF.setLo>0?chip(setPct>=CF.setLo&&setPct<=CF.setHi,setPct>=CF.setLo-4,'設備比率 '+setPct.toFixed(0)+'%'):chipN('設備比率 '+setPct.toFixed(0)+'%');
+  const cSho=chip(shoPct>=12&&shoPct<=22,shoPct>=9,'諸経費率 '+shoPct.toFixed(0)+'%');
+  const cM=chip(mg>=CF.mgLo&&mg<=CF.mgHi,mg>=CF.mgLo-0.03,'粗利率 '+(mg*100).toFixed(0)+'%');
+  document.getElementById('valid').innerHTML='<div style="margin:8px 0;font-size:13px">妥当性【'+CF.label+'】: '+cT+' '+cS+' '+cSho+' '+cM+'</div>';
+}
+function buildOpts(av){const box=document.getElementById('optbox');
+  if(!av.length){box.innerHTML='<div class="note">（テナント内装はオプションなし）</div>';return;}
+  // 初回/種別変更時のみ構築
+  if(box.getAttribute('data-type')!==CUR){box.innerHTML='';box.setAttribute('data-type',CUR);
+    av.forEach(o=>{OPTSTATE[o.name]=o.on;const d=document.createElement('label');d.className='opt';
+      d.innerHTML='<input type="checkbox" '+(o.on?'checked':'')+'> '+o.name+'<span class="price">'+yen(o.g)+'</span>';
+      d.querySelector('input').addEventListener('change',function(){OPTSTATE[o.name]=this.checked;run();});
+      box.appendChild(d);});}
+}
+function onType(){CUR=document.getElementById('ptype').value;const c=PT[CUR];
+  document.getElementById('genba').value=c.genba;document.getElementById('ippan').value=c.ippan;document.getElementById('sekkei').value=c.sekkei;
+  document.getElementById('specf').value='1.00';
+  document.getElementById('ptypeNote').textContent='※'+c.label+'：'+c.note+(CUR==='tenant'?'（延床・室数を入力してください）':'');
+  PIDS.forEach(id=>{document.getElementById(id).value=(CUR==='tenant')?'':(PDEF_SHINCHIKU[id]||'');});
+  OPTSTATE={};document.getElementById('optbox').removeAttribute('data-type');
+  run();}
+
+// 活動DB保存（売価・前提のみ／原価は送らない）
+async function saveActivity(){const msg=document.getElementById('act_msg');
+  if(!LAST){await run();}
+  const cust=(document.getElementById('act_customer').value||'').trim();
+  if(!cust){msg.style.color='#c00000';msg.textContent='案件名／顧客を入力してください';return;}
+  const p=params();const tsubo=p.tsubo||0;
+  const payload={source:'estimate-web',app_version:'web1',use_type:PT[CUR].usetype,customer_name:cust,
+    assigned_staff:(document.getElementById('act_staff').value||'').trim()||null,
+    accuracy:document.getElementById('act_acc').value,status:document.getElementById('act_status').value,
+    floor_area_m2:p.nobiyuka,building_area_m2:p.kenchiku,area_tsubo:p.tsubo,
+    total_amount_excl:LAST.work,total_amount_incl:LAST.incl,
+    unit_price_tsubo_man:tsubo?Math.round(LAST.work/tsubo/100)/100:null,
+    params:{shinsatsu:p.shinsatsu,kyosei:p.kyosei,chair:p.chair,xray:p.xray,xarea:p.xarea,shodoku:p.shodoku,gikou:p.gikou,tearai:p.tearai,toilet:p.toilet,ac_s:p.ac_s,ac_k:p.ac_k,spec_factor:parseFloat(document.getElementById('specf').value)||1},
+    assumptions:(document.getElementById('act_assume').value||'').trim()||null,
+    unconfirmed:(document.getElementById('act_unconf').value||'').trim()||null};
+  msg.style.color='#555';msg.textContent='保存中…';
+  try{const r=await fetch(SB_URL+'/rest/v1/estimate_activities',{method:'POST',
+      headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+PUB_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(payload)});
+    if(!r.ok)throw new Error(r.status+' '+(await r.text()));
+    msg.style.color='#375623';msg.textContent='✓ 活動DBに記録（'+PT[CUR].label+'／'+cust+'）';
+    ['act_customer','act_assume','act_unconf'].forEach(id=>document.getElementById(id).value='');
+  }catch(e){msg.style.color='#c00000';msg.textContent='⚠ 保存失敗: '+e.message;}}
+
+function exportXlsx(){if(!LAST){run();return;}const d=LAST;const aoa=[['ハゼモト建設 歯科見積(概算・'+PT[CUR].label+')'],['延床',params().nobiyuka,'坪',params().tsubo,'税込',d.incl],[],['工種','売金額(税抜)','構成比','粗利率']];
+  d.rows.forEach(r=>aoa.push([r.cat+' '+r.title,r.sell,(r.pct*100).toFixed(1)+'%',(r.margin*100).toFixed(0)+'%']));
+  aoa.push([],['工事価格(税抜)',d.work],['税込',d.incl]);
+  const ws=XLSX.utils.aoa_to_sheet(aoa);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'見積');
+  XLSX.writeFile(wb,'歯科見積_'+new Date().toISOString().slice(0,10)+'.xlsx');}
+
+function toB64(f){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result.split(',')[1]);};r.onerror=rej;r.readAsDataURL(f);});}
+async function sendPdf(file){var st=document.getElementById('aiStatus');st.textContent='図面を解析中…（Claude）';
+  try{var b64=await toB64(file);
+    var r=await fetch(SB_URL+'/functions/v1/analyze-drawing',{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+PUB_KEY,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({pdf:b64})});
+    var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
+    var j=d.params||{};var keys=['nobiyuka','kenchiku','tsubo','shinsatsu','kodomo','kyosei','xray','xarea','shodoku','gikou','tearai','toilet','ac_s','ac_k'];
+    var n=0;keys.forEach(function(k){if(j[k]!=null&&!isNaN(parseFloat(j[k]))){document.getElementById(k).value=j[k];n++;}});
+    run();st.innerHTML='✓ '+n+'項目を自動入力'+(j.summary?'（'+j.summary+'）':'');
+  }catch(e){st.innerHTML='⚠ '+e.message+'（手入力/貼り付けで続行できます）';}}
+(function(){var drop=document.getElementById('drop'),pdf=document.getElementById('pdf');if(!drop)return;
+  drop.onclick=function(){pdf.click();};
+  drop.ondragover=function(e){e.preventDefault();drop.style.background='#e8f1ff';};
+  drop.ondragleave=function(){drop.style.background='#f8fbff';};
+  drop.ondrop=function(e){e.preventDefault();drop.style.background='#f8fbff';if(e.dataTransfer.files[0])sendPdf(e.dataTransfer.files[0]);};
+  pdf.onchange=function(){if(pdf.files[0])sendPdf(pdf.files[0]);};})();
+function applyAutofill(){var st=document.getElementById('status');
+  var txt=(document.getElementById('autofill_json').value||'').trim();
+  if(!txt){st.textContent='貼り付け欄が空です';return;}
+  var m=txt.match(/\{[\s\S]*\}/);if(m)txt=m[0];
+  var j;try{j=JSON.parse(txt);}catch(e){st.textContent='JSONを読めません: '+e.message;return;}
+  var keys=['nobiyuka','kenchiku','tsubo','shinsatsu','kodomo','kyosei','xray','xarea','shodoku','gikou','tearai','toilet','ac_s','ac_k'];
+  var n=0;keys.forEach(function(k){if(j[k]!=null&&!isNaN(parseFloat(j[k]))){document.getElementById(k).value=j[k];n++;}});
+  run();st.textContent='✓ '+n+'項目を自動入力'+(j.summary?'（'+j.summary+'）':'');}
+document.querySelectorAll('#nobiyuka,#kenchiku,#tsubo,#shinsatsu,#kodomo,#kyosei,#xray,#xarea,#shodoku,#gikou,#tearai,#toilet,#ac_s,#ac_k,#gmargin,#genba,#ippan,#sekkei').forEach(el=>el.addEventListener('input',debounce));
+run();
+</script></body></html>
