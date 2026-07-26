@@ -91,6 +91,9 @@ button.sec{background:#6b7a90}button:hover{opacity:.9}
   </div>
   <div style="margin-top:8px"><label>仕様グレード係数（テナント高仕様の補正）</label>
    <select id="specf" onchange="run()"><option value="1.00">標準（中野基準）×1.00</option><option value="1.10">中上位 ×1.10</option><option value="1.17">高仕様（安西級）×1.17</option><option value="1.30">最高級 ×1.30</option></select></div>
+  <div id="demoWrap" style="margin-top:8px;display:none"><label>解体工事（テナント：現況区分）</label>
+   <select id="demo" onchange="run()"><option value="1">居抜き解体（標準）×1.0</option><option value="0">スケルトン渡し・解体なし ×0</option><option value="1.4">全面解体・スラブ現し ×1.4</option></select>
+   <div class="note">※解体工事(T02)の金額を増減します。新築では影響しません。</div></div>
   <h2 style="margin-top:16px">⚡ 電気容量チェック（初期確認・価格反映）</h2>
   <div class="note" style="margin-bottom:6px">電気容量は最大の変動要因。医療機器から負荷を計算し、主幹A・幹線・動力盤・容量不足を確認して価格に反映します。</div>
   <div class="grid">
@@ -137,7 +140,7 @@ button.sec{background:#6b7a90}button:hover{opacity:.9}
    <div class="note">※保存されるのは <b>売価・面積・パラメータ・前提・精度</b> のみ。<span class="safe">原価・粗利率は送信しません</span>。案件種別も自動記録。</div>
   </div>
   <h2>工種別内訳</h2>
-  <div style="margin-bottom:6px"><button onclick="enterEdit()">✏️ 明細編集</button><button class="sec" onclick="exitEdit()">🔄 パラメータ計算に戻す</button></div>
+  <div style="margin-bottom:6px"><button onclick="enterEdit()">✏️ 明細編集</button><button class="sec" onclick="exitEdit()">🔄 パラメータ計算に戻す</button><button class="sec" onclick="makeProposal()">🖨 提出(表紙・工種別)</button><button class="sec" onclick="makeProposalDetail()">🖨 提出(小明細版)</button><button class="sec" onclick="makeBudgetCompare()">📊 実行予算 vs 提出(社内)</button></div>
   <div id="editWrap" style="display:none;overflow-x:auto"></div>
   <table id="tbl"><thead><tr><th class="l">工種</th><th>売金額(税抜)</th><th>構成比</th><th>粗利率</th></tr></thead><tbody></tbody></table>
 </div>
@@ -178,7 +181,7 @@ function params(){const shinsatsu=num('shinsatsu')+num('kodomo');const kyosei=nu
 function reqBody(){const gm=document.getElementById('gmargin').value;
   return {use_type:CUR,params:params(),gmargin:gm===''?null:parseFloat(gm),
     genbaR:document.getElementById('genba').value,ippanR:document.getElementById('ippan').value,
-    sekkei:num('sekkei'),specf:document.getElementById('specf').value,opts:OPTSTATE,elec_override:num('elec_override')};}
+    sekkei:num('sekkei'),specf:document.getElementById('specf').value,demo:document.getElementById('demo').value,opts:OPTSTATE,elec_override:num('elec_override')};}
 
 async function run(){if(EDIT)return;const st=document.getElementById('status');st.textContent='計算中…';
   try{
@@ -228,6 +231,7 @@ function buildOpts(av){const box=document.getElementById('optbox');
 function onType(){CUR=document.getElementById('ptype').value;const c=PT[CUR];
   document.getElementById('genba').value=c.genba;document.getElementById('ippan').value=c.ippan;document.getElementById('sekkei').value=c.sekkei;
   document.getElementById('specf').value='1.00';
+  document.getElementById('demo').value='1';document.getElementById('demoWrap').style.display=(CUR==='tenant')?'block':'none';
   document.getElementById('ptypeNote').textContent='※'+c.label+'：'+c.note+(CUR==='tenant'?'（延床・室数を入力してください）':'');
   PIDS.forEach(id=>{document.getElementById(id).value=(CUR==='tenant')?'':(PDEF_SHINCHIKU[id]||'');});
   OPTSTATE={};document.getElementById('optbox').removeAttribute('data-type');
@@ -262,6 +266,219 @@ function exportXlsx(){if(!LAST){run();return;}const d=LAST;const aoa=[['ハゼ�
   const ws=XLSX.utils.aoa_to_sheet(aoa);const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'見積');
   XLSX.writeFile(wb,'歯科見積_'+new Date().toISOString().slice(0,10)+'.xlsx');}
 
+// ===== 客先提出フォーム（A4横・売価のみ・印刷可） =====
+function makeProposal(){
+  if(!LAST){run();alert('計算後にもう一度押してください');return;}
+  var d=LAST,p=params();
+  var cust=(document.getElementById('act_customer').value||'　　　　　　　　').trim();
+  var staff=(document.getElementById('act_staff').value||'').trim();
+  var today=new Date(); var ymd=today.getFullYear()+'年'+(today.getMonth()+1)+'月'+today.getDate()+'日';
+  var exp=new Date(today.getTime()+30*86400000); var expymd=exp.getFullYear()+'年'+(exp.getMonth()+1)+'月'+exp.getDate()+'日';
+  var rowsH=d.rows.filter(function(r){return r.sell>0;}).map(function(r){
+    return '<tr><td class="l">'+r.cat+'　'+r.title+'</td><td class="r">'+yen(r.sell)+'</td><td class="c">'+(r.pct*100).toFixed(1)+'%</td></tr>';}).join('');
+  var betsu=['医療機器本体（チェア・X線/CT・滅菌器等）','特殊什器・サイン意匠グレードアップ','地盤改良・外構・駐車場本体','インフラ引込（電気増設・給排水本管）','IT・通信機器・院内LAN端末','消費税は「御見積金額」に含む'];
+  var betsuH=betsu.map(function(b){return '<li>'+b+'</li>';}).join('');
+  var h=''+
+  '<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>御見積書</title><style>'+
+  '@page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}'+
+  'body{font-family:"Yu Gothic","Hiragino Sans",sans-serif;color:#1a2733;margin:0;padding:6mm 8mm;font-size:11px}'+
+  '.top{display:flex;justify-content:space-between;align-items:flex-start}'+
+  'h1{font-size:26px;letter-spacing:8px;margin:0 0 6px;color:#1f4e78}'+
+  '.co{text-align:right;font-size:10.5px;line-height:1.5}'+
+  '.co b{font-size:13px;color:#1f4e78}'+
+  '.to{margin:2px 0 0;font-size:15px;font-weight:700;border-bottom:1.5px solid #1f4e78;display:inline-block;padding:0 40px 3px 4px}'+
+  '.meta{font-size:10px;color:#555;margin-top:3px}'+
+  '.total{margin:10px 0;padding:10px 14px;background:#eef4fb;border:2px solid #1f4e78;border-radius:6px;display:flex;justify-content:space-between;align-items:baseline}'+
+  '.total .l2{font-size:14px;font-weight:700;color:#1f4e78}.total .v{font-size:30px;font-weight:800;color:#1f4e78;font-variant-numeric:tabular-nums}'+
+  '.cols{display:flex;gap:14px}.colL{flex:1.3}.colR{flex:1}'+
+  'table{width:100%;border-collapse:collapse;font-size:10.5px}'+
+  'th,td{border:1px solid #cfd8e3;padding:4px 7px}th{background:#1f4e78;color:#fff}'+
+  'td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}td.c,th.c{text-align:center}td.l{text-align:left}'+
+  'tfoot td{font-weight:700;background:#f0f4f9}'+
+  'h3{font-size:11px;color:#1f4e78;margin:8px 0 4px;border-left:4px solid #1f4e78;padding-left:6px}'+
+  '.spec td{border:1px solid #cfd8e3;padding:3px 6px}'+
+  'ul{margin:3px 0 0;padding-left:16px}li{margin:1px 0}'+
+  '.terms{font-size:10px;line-height:1.7}'+
+  '.seal{display:flex;gap:6px;margin-top:6px}.seal .b{width:46px;height:46px;border:1px solid #999;border-radius:4px;text-align:center;font-size:9px;color:#999;padding-top:3px}'+
+  '.note2{font-size:9px;color:#888;margin-top:6px}'+
+  '@media print{.noprint{display:none}}'+
+  '</style></head><body>'+
+  '<div class="noprint" style="text-align:right;margin-bottom:4px"><button onclick="window.print()">🖨 印刷 / PDF保存</button></div>'+
+  '<div class="top"><div>'+
+   '<h1>御 見 積 書</h1>'+
+   '<div class="to">'+cust+'　御中</div>'+
+   '<div class="meta">件名：歯科クリニック '+PT[CUR].label+'工事　一式　／　工事場所：別途打合せ</div>'+
+   '<div class="meta">下記の通り御見積申し上げます。（本書は概算見積です）</div>'+
+  '</div><div class="co">'+
+   '<div>見積日：'+ymd+'</div><div>有効期限：'+expymd+'</div>'+
+   '<div style="margin-top:5px"><b>ハゼモト建設株式会社</b></div>'+
+   '<div>〒802-0064 北九州市小倉北区片野4-12-10</div>'+
+   '<div>TEL 093-931-0521　登録番号 T8290801003082</div>'+
+   '<div>代表取締役　櫨本 健一</div>'+
+   (staff?'<div>担当：'+staff+'</div>':'')+
+   '<div class="seal"><div class="b">担当</div><div class="b">係長</div><div class="b">部長</div><div class="b">社長</div></div>'+
+  '</div></div>'+
+  '<div class="total"><div class="l2">御見積金額（税込）</div><div class="v">'+yen(d.incl)+'</div></div>'+
+  '<div class="cols"><div class="colL">'+
+   '<h3>工事内訳（工種別）</h3>'+
+   '<table><thead><tr><th class="l">工　種</th><th class="r">金額（税抜）</th><th class="c">構成比</th></tr></thead><tbody>'+rowsH+'</tbody>'+
+   '<tfoot><tr><td class="l">工事価格（税抜）</td><td class="r">'+yen(d.work)+'</td><td class="c">100%</td></tr>'+
+   '<tr><td class="l">消費税（10%）</td><td class="r">'+yen(d.incl-d.work)+'</td><td></td></tr>'+
+   '<tr><td class="l">御見積金額（税込）</td><td class="r">'+yen(d.incl)+'</td><td></td></tr></tfoot></table>'+
+  '</div><div class="colR">'+
+   '<h3>建物・計画諸元</h3>'+
+   '<table class="spec"><tbody>'+
+    '<tr><td class="l">延床/施工面積</td><td class="r">'+(p.nobiyuka||'-')+' ㎡（'+(p.tsubo||'-')+' 坪）</td></tr>'+
+    '<tr><td class="l">診療系（チェア）</td><td class="r">'+(p.chair||'-')+' 台</td></tr>'+
+    '<tr><td class="l">X線室 / 消毒 / 技工</td><td class="r">'+(p.xray||0)+' / '+(p.shodoku||0)+' / '+(p.gikou||0)+' 室</td></tr>'+
+    '<tr><td class="l">坪単価（税込目安）</td><td class="r">'+(d.tsuboUnitMan?(d.tsuboUnitMan*1.1).toFixed(1)+' 万/坪':'-')+'</td></tr>'+
+   '</tbody></table>'+
+   '<h3>お取引条件</h3>'+
+   '<div class="terms">・工　期：別途協議（着工後 約○ヶ月）<br>・支払条件：契約時 / 上棟時 / 完成時 各1/3<br>・見積有効期限：'+expymd+'<br>・本書は図面・現況に基づく<b>概算</b>です。実施設計で精算します。</div>'+
+   '<h3>別途工事（本見積に含まず）</h3><ul>'+betsuH+'</ul>'+
+  '</div></div>'+
+  '<div class="note2">※本見積は数量根拠に基づく積算概算です。詳細内訳は別紙にてご提示可能です。／ ハゼモト建設 Clinic Architect Pro</div>'+
+  '</body></html>';
+  var w=window.open('','_blank');
+  if(!w){alert('ポップアップがブロックされました。ブラウザの設定で許可してください。');return;}
+  w.document.open();w.document.write(h);w.document.close();
+}
+
+// ===== 客先提出フォーム 小明細版（数量×単価 詳細内訳・売価のみ・A4縦） =====
+async function makeProposalDetail(){
+  var st=document.getElementById('status');st.textContent='明細取得中…';
+  var reqb=reqBody();reqb.detail=true;
+  var lines,work,incl;
+  try{
+    var r=await fetch(FN,{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(reqb)});
+    var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
+    lines=(d.lines||[]).filter(function(l){return l.amount>0;});work=d.work;incl=d.incl;
+  }catch(e){st.textContent='⚠ '+e.message;alert('明細取得に失敗：'+e.message);return;}
+  st.textContent='';
+  var p=params();
+  var cust=(document.getElementById('act_customer').value||'　　　　　　　　').trim();
+  var staff=(document.getElementById('act_staff').value||'').trim();
+  var today=new Date();var ymd=today.getFullYear()+'年'+(today.getMonth()+1)+'月'+today.getDate()+'日';
+  var exp=new Date(today.getTime()+30*86400000);var expymd=exp.getFullYear()+'年'+(exp.getMonth()+1)+'月'+exp.getDate()+'日';
+  // 工種ごとに集計
+  var groups=[],gmap={};
+  lines.forEach(function(l){if(!gmap[l.cat]){gmap[l.cat]={cat:l.cat,title:l.cattitle,items:[],sub:0};groups.push(gmap[l.cat]);}gmap[l.cat].items.push(l);gmap[l.cat].sub+=l.amount;});
+  var bodyH=groups.map(function(g){
+    var its=g.items.map(function(l){
+      return '<tr><td class="l">'+l.name+(l.spec?'　<span class="sp">'+l.spec+'</span>':'')+'</td><td class="c">'+(l.qty)+'</td><td class="c">'+(l.unit||'')+'</td><td class="r">'+yen(l.price)+'</td><td class="r">'+yen(l.amount)+'</td></tr>';}).join('');
+    return '<tr class="cat"><td class="l" colspan="4">'+g.cat+'　'+g.title+'</td><td class="r">'+yen(g.sub)+'</td></tr>'+its;
+  }).join('');
+  var betsu=['医療機器本体（チェア・X線/CT・滅菌器等）','特殊什器・意匠グレードアップ','地盤改良・外構・駐車場本体','インフラ引込（電気増設・給排水本管）','IT・通信機器・院内LAN端末'];
+  var betsuH=betsu.map(function(b){return '<li>'+b+'</li>';}).join('');
+  var h=''+
+  '<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>御見積内訳書</title><style>'+
+  '@page{size:A4 portrait;margin:9mm}*{box-sizing:border-box}'+
+  'body{font-family:"Yu Gothic","Hiragino Sans",sans-serif;color:#1a2733;margin:0;padding:4mm 5mm;font-size:9.5px}'+
+  '.top{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #1f4e78;padding-bottom:5px}'+
+  'h1{font-size:20px;letter-spacing:6px;margin:0 0 4px;color:#1f4e78}'+
+  '.to{font-size:14px;font-weight:700}.co{text-align:right;font-size:9px;line-height:1.5}.co b{font-size:12px;color:#1f4e78}'+
+  '.meta{font-size:9px;color:#555;margin-top:2px}'+
+  '.total{margin:8px 0;padding:7px 12px;background:#eef4fb;border:2px solid #1f4e78;border-radius:5px;display:flex;justify-content:space-between;align-items:baseline}'+
+  '.total .l2{font-size:12px;font-weight:700;color:#1f4e78}.total .v{font-size:24px;font-weight:800;color:#1f4e78}'+
+  'table{width:100%;border-collapse:collapse;font-size:9px;margin-top:2px}'+
+  'th,td{border:1px solid #d3dae3;padding:2.5px 6px}th{background:#1f4e78;color:#fff;position:sticky}'+
+  'td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}td.c,th.c{text-align:center}td.l{text-align:left}'+
+  'tr.cat td{background:#e7eef7;font-weight:700;color:#1f4e78}'+
+  '.sp{color:#999;font-size:8px}'+
+  'tfoot td{font-weight:800;background:#f0f4f9;font-size:10.5px}'+
+  '.foot{display:flex;justify-content:space-between;margin-top:8px;gap:14px}'+
+  '.terms{font-size:8.5px;line-height:1.6;flex:1}h3{font-size:9.5px;color:#1f4e78;margin:4px 0 2px;border-left:3px solid #1f4e78;padding-left:5px}ul{margin:2px 0 0;padding-left:14px}li{margin:0.5px 0}'+
+  '@media print{.noprint{display:none}}'+
+  '</style></head><body>'+
+  '<div class="noprint" style="text-align:right;margin-bottom:3px"><button onclick="window.print()">🖨 印刷 / PDF保存</button></div>'+
+  '<div class="top"><div><h1>御見積内訳書</h1><div class="to">'+cust+'　御中</div>'+
+   '<div class="meta">件名：歯科クリニック '+PT[CUR].label+'工事　一式</div>'+
+   '<div class="meta">延床 '+(p.nobiyuka||'-')+'㎡（'+(p.tsubo||'-')+'坪）／チェア '+(p.chair||'-')+'台</div></div>'+
+   '<div class="co"><div>見積日：'+ymd+'　有効期限：'+expymd+'</div>'+
+    '<div style="margin-top:4px"><b>ハゼモト建設株式会社</b></div><div>〒802-0064 北九州市小倉北区片野4-12-10</div>'+
+    '<div>TEL 093-931-0521　登録番号 T8290801003082</div><div>代表取締役 櫨本 健一'+(staff?'　担当：'+staff:'')+'</div></div></div>'+
+  '<div class="total"><div class="l2">御見積金額（税込）</div><div class="v">'+yen(incl)+'</div></div>'+
+  '<table><thead><tr><th class="l">名称・仕様</th><th class="c">数量</th><th class="c">単位</th><th class="r">単価</th><th class="r">金額</th></tr></thead>'+
+   '<tbody>'+bodyH+'</tbody>'+
+   '<tfoot><tr><td class="l" colspan="4">工事価格（税抜）</td><td class="r">'+yen(work)+'</td></tr>'+
+    '<tr><td class="l" colspan="4">消費税（10%）</td><td class="r">'+yen(incl-work)+'</td></tr>'+
+    '<tr><td class="l" colspan="4">御見積金額（税込）</td><td class="r">'+yen(incl)+'</td></tr></tfoot></table>'+
+  '<div class="foot"><div class="terms"><h3>お取引条件</h3>・工期：別途協議　・支払：契約時/上棟時/完成時 各1/3<br>・有効期限：'+expymd+'　・本書は図面・現況に基づく<b>概算</b>です。実施設計で精算します。</div>'+
+   '<div class="terms"><h3>別途工事（本見積に含まず）</h3><ul>'+betsuH+'</ul></div></div>'+
+  '<div style="font-size:8px;color:#888;margin-top:5px">※各金額は数量根拠に基づく積算です。／ ハゼモト建設 Clinic Architect Pro</div>'+
+  '</body></html>';
+  var w=window.open('','_blank');
+  if(!w){alert('ポップアップがブロックされました。ブラウザ設定で許可してください。');return;}
+  w.document.open();w.document.write(h);w.document.close();
+}
+
+// ===== 実行予算 vs 提出見積 比較（社内・原価表示） =====
+function makeBudgetCompare(){
+  if(!LAST){run();alert('計算後にもう一度押してください');return;}
+  var d=LAST,pt=PT[CUR];
+  var cust=(document.getElementById('act_customer').value||'（案件名）').trim();
+  var lo=Math.round(pt.mgLo*100), hi=Math.round(pt.mgHi*100);
+  var today=new Date(); var ymd=today.getFullYear()+'年'+(today.getMonth()+1)+'月'+today.getDate()+'日';
+  var rowsData=[];
+  d.rows.filter(function(r){return r.sell>0;}).forEach(function(r){rowsData.push({n:r.cat+'　'+r.title,s:r.sell,c:r.cost});});
+  rowsData.push({n:'諸経費（現場+一般管理）',s:d.genba+d.ippan,c:(d.genbaCost||0)+(d.ippanCost||0)});
+  if(d.sekkei>0)rowsData.push({n:'設計・確認申請（外注時は原価入力）',s:d.sekkei,c:0});
+  if(d.opt>0)rowsData.push({n:'高級オプション（採用）',s:d.opt,c:d.optCost||0});
+  var bodyRows=rowsData.map(function(r,i){var gp=r.s-r.c,mr=r.s>0?gp/r.s*100:0;
+    return '<tr><td class="l">'+r.n+'</td><td class="r">'+yen(r.s)+'</td>'+
+      '<td class="r"><input type="number" class="ov" data-s="'+r.s+'" id="c'+i+'" value="'+r.c+'" oninput="recalc()"></td>'+
+      '<td class="r" id="g'+i+'">'+yen(gp)+'</td><td class="c" id="m'+i+'">'+mr.toFixed(1)+'%</td></tr>';}).join('');
+  var h=''+
+  '<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>実行予算 vs 提出見積</title><style>'+
+  '@page{size:A4 landscape;margin:10mm}*{box-sizing:border-box}'+
+  'body{font-family:"Yu Gothic","Hiragino Sans",sans-serif;color:#1a2733;margin:0;padding:6mm 8mm;font-size:11px}'+
+  '.hd{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #1f4e78;padding-bottom:5px}'+
+  'h1{font-size:19px;margin:0;color:#1f4e78}.sub{font-size:10px;color:#666}'+
+  '.warn{background:#fff2cc;border:1px solid #dd8b1a;color:#7f6000;font-size:9px;padding:3px 8px;border-radius:4px;display:inline-block;margin:6px 0}'+
+  'table{width:100%;border-collapse:collapse;font-size:10.5px;margin-top:6px}'+
+  'th,td{border:1px solid #cfd8e3;padding:4px 8px}th{background:#1f4e78;color:#fff}'+
+  'td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}td.c,th.c{text-align:center}td.l{text-align:left}'+
+  '.ov{width:110px;text-align:right;padding:2px 5px;border:1px solid #c00000;border-radius:3px;color:#c00000;font-size:10.5px;font-variant-numeric:tabular-nums}'+
+  'tfoot td{font-weight:800;background:#eef4fb;font-size:12px}'+
+  '.cards{display:flex;gap:10px;margin-top:10px}'+
+  '.card{flex:1;border:1px solid #cfd8e3;border-radius:6px;padding:8px 12px;text-align:center}'+
+  '.card .l3{font-size:10px;color:#666}.card .v3{font-size:19px;font-weight:800;color:#1f4e78}.card .sub{font-size:10px}'+
+  '.note2{font-size:9px;color:#888;margin-top:8px}'+
+  '@media print{.noprint{display:none}.ov{border:none;color:#c00000;padding:0}}'+
+  '</style></head><body>'+
+  '<div class="noprint" style="text-align:right"><button onclick="window.print()">🖨 印刷 / PDF保存</button></div>'+
+  '<div class="hd"><h1>実行予算 vs 提出見積　比較表</h1><div class="sub">'+cust+'（'+pt.label+'）　作成：'+ymd+'　※社内管理資料</div></div>'+
+  '<div class="warn">本表は原価（実行予算）を含む<b>社内限定</b>資料です。客先へ提出しないでください。　<b>赤枠の「実行予算」は協力業者の実見積で上書きできます</b>（入力すると粗利が自動再計算）。</div>'+
+  '<table><thead><tr><th class="l">工種／項目</th><th class="r">提出見積（税抜売価）</th><th class="r">実行予算（原価・編集可）</th><th class="r">粗利額</th><th class="c">粗利率</th></tr></thead>'+
+  '<tbody>'+bodyRows+'</tbody>'+
+  '<tfoot><tr><td class="l">工事価格（税抜）合計</td><td class="r" id="tS">'+yen(d.work)+'</td><td class="r" id="tC" style="color:#c00000">'+yen(d.workCost)+'</td><td class="r" id="tG">-</td><td class="c" id="tM">-</td></tr></tfoot></table>'+
+  '<div class="cards">'+
+   '<div class="card"><div class="l3">提出見積（税抜）</div><div class="v3">'+yen(d.work)+'</div></div>'+
+   '<div class="card"><div class="l3">実行予算（原価）</div><div class="v3" id="cC" style="color:#c00000">-</div></div>'+
+   '<div class="card"><div class="l3">想定粗利額</div><div class="v3" id="cG">-</div></div>'+
+   '<div class="card"><div class="l3">粗利率（判定）</div><div class="v3" id="cM">-</div><div class="sub" id="cJ"></div></div>'+
+  '</div>'+
+  '<div class="note2">※初期の実行予算＝当システムの原価アンカー（工種別粗利率・実勢単価）。協力業者見積が出たら赤枠を上書きしてください。／ 税込見積：'+yen(d.incl)+'　目標粗利率：'+lo+'〜'+hi+'%</div>'+
+  '<scr'+'ipt>'+
+  'function yen(n){return "¥"+Math.round(n||0).toLocaleString("ja-JP");}var LO='+lo+',HI='+hi+';'+
+  'function recalc(){var ins=document.querySelectorAll(".ov");var tS=0,tC=0;'+
+  'ins.forEach(function(inp,i){var s=+inp.dataset.s;var c=+inp.value||0;var gp=s-c;var mr=s>0?gp/s*100:0;'+
+  'document.getElementById("g"+i).textContent=yen(gp);document.getElementById("m"+i).textContent=mr.toFixed(1)+"%";tS+=s;tC+=c;});'+
+  'var gp=tS-tC,mr=tS>0?gp/tS*100:0;var col=mr<LO?"#c00000":(mr>HI?"#dd8b1a":"#2f8f5b");'+
+  'var jt=mr<LO?("⚠ 目標未満（"+LO+"%）"):(mr>HI?("▲ 目標超過（"+HI+"%）"):("✓ 目標帯内（"+LO+"〜"+HI+"%）"));'+
+  'document.getElementById("tS").textContent=yen(tS);document.getElementById("tC").textContent=yen(tC);'+
+  'document.getElementById("tG").textContent=yen(gp);document.getElementById("tM").textContent=mr.toFixed(1)+"%";document.getElementById("tM").style.color=col;'+
+  'document.getElementById("cC").textContent=yen(tC);document.getElementById("cG").textContent=yen(gp);'+
+  'document.getElementById("cM").textContent=mr.toFixed(1)+"%";document.getElementById("cM").style.color=col;'+
+  'document.getElementById("cJ").textContent=jt;document.getElementById("cJ").style.color=col;}'+
+  'window.onload=recalc;'+
+  '<\/scr'+'ipt>'+
+  '</body></html>';
+  var w=window.open('','_blank');
+  if(!w){alert('ポップアップがブロックされました。ブラウザの設定で許可してください。');return;}
+  w.document.open();w.document.write(h);w.document.close();
+}
+
 // ===== 明細1行ずつ編集モード =====
 async function enterEdit(){var st=document.getElementById('status');st.textContent='明細を取得中…';
   var body=reqBody();body.detail=true;
@@ -273,15 +490,16 @@ async function enterEdit(){var st=document.getElementById('status');st.textConte
     st.textContent='✏️ 明細編集モード：数量・単価を直接修正できます（自動計算は停止中）';
   }catch(e){st.textContent='⚠ '+e.message;}}
 function renderEdit(){var groups={};ELINES.forEach(function(l,i){(groups[l.cat]=groups[l.cat]||[]).push(i);});
-  var h='<table><thead><tr><th class="l">工種／名称</th><th>数量</th><th>単位</th><th>単価</th><th>金額</th></tr></thead><tbody>';
+  var h='<table><thead><tr><th class="l">工種／名称</th><th>数量</th><th>単位</th><th>単価</th><th>金額</th><th class="l">数量根拠</th></tr></thead><tbody>';
   Object.keys(groups).forEach(function(cat){var ct=ELINES[groups[cat][0]].cattitle;
-    h+='<tr style="background:#eef2f7;font-weight:700"><td class="l" colspan="5">'+cat+' '+ct+'</td></tr>';
+    h+='<tr style="background:#eef2f7;font-weight:700"><td class="l" colspan="6">'+cat+' '+ct+'</td></tr>';
     groups[cat].forEach(function(i){var l=ELINES[i];
       h+='<tr><td class="l" style="font-size:11px">'+l.name+(l.spec?'<br><span style="color:#888">'+l.spec+'</span>':'')+'</td>'
         +'<td><input type="number" value="'+l.qty+'" style="width:66px;text-align:right;padding:3px" oninput="editLine('+i+',0,this.value)"></td>'
         +'<td>'+l.unit+'</td>'
         +'<td><input type="number" value="'+l.price+'" style="width:88px;text-align:right;padding:3px" oninput="editLine('+i+',1,this.value)"></td>'
-        +'<td id="amt'+i+'">'+yen(l.amount)+'</td></tr>';});});
+        +'<td id="amt'+i+'">'+yen(l.amount)+'</td>'
+        +'<td class="l" style="font-size:10px;color:#888">'+(l.genkyo||'')+'</td></tr>';});});
   h+='</tbody></table>';document.getElementById('editWrap').innerHTML=h;}
 function editLine(i,f,v){var fld=(f===0?'qty':'price');ELINES[i][fld]=parseFloat(v)||0;ELINES[i].amount=Math.round(ELINES[i].qty*ELINES[i].price);
   document.getElementById('amt'+i).textContent=yen(ELINES[i].amount);recalcEdit();}
