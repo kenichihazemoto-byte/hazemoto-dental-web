@@ -499,20 +499,23 @@ async function enterEdit(){var st=document.getElementById('status');st.textConte
     st.textContent='✏️ 明細編集モード：数量・単価を直接修正できます（自動計算は停止中）';
   }catch(e){st.textContent='⚠ '+e.message;}}
 function renderEdit(){var groups={};ELINES.forEach(function(l,i){(groups[l.cat]=groups[l.cat]||[]).push(i);});
-  var h='<table><thead><tr><th class="l">工種／名称</th><th>数量</th><th>単位</th><th>単価</th><th>金額</th><th class="l">数量根拠</th></tr></thead><tbody>';
+  var h='<table><thead><tr><th>採用</th><th class="l">工種／名称</th><th>数量</th><th>単位</th><th>単価</th><th>金額</th><th class="l">数量根拠</th></tr></thead><tbody>';
   Object.keys(groups).forEach(function(cat){var ct=ELINES[groups[cat][0]].cattitle;
-    h+='<tr style="background:#eef2f7;font-weight:700"><td class="l" colspan="6">'+cat+' '+ct+'</td></tr>';
-    groups[cat].forEach(function(i){var l=ELINES[i];
-      h+='<tr><td class="l" style="font-size:11px">'+l.name+(l.spec?'<br><span style="color:#888">'+l.spec+'</span>':'')+'</td>'
+    h+='<tr style="background:#eef2f7;font-weight:700"><td class="l" colspan="7">'+cat+' '+ct+'</td></tr>';
+    groups[cat].forEach(function(i){var l=ELINES[i];var ex=l.excluded?'opacity:.4;text-decoration:line-through':'';
+      h+='<tr id="rowE'+i+'" style="'+ex+'"><td style="text-align:center"><input type="checkbox" '+(l.excluded?'':'checked')+' onchange="toggleLine('+i+',this.checked)"></td>'
+        +'<td class="l" style="font-size:11px">'+l.name+(l.spec?'<br><span style="color:#888">'+l.spec+'</span>':'')+'</td>'
         +'<td><input type="number" value="'+l.qty+'" style="width:66px;text-align:right;padding:3px" oninput="editLine('+i+',0,this.value)"></td>'
         +'<td>'+l.unit+'</td>'
         +'<td><input type="number" value="'+l.price+'" style="width:88px;text-align:right;padding:3px" oninput="editLine('+i+',1,this.value)"></td>'
         +'<td id="amt'+i+'">'+yen(l.amount)+'</td>'
         +'<td class="l" style="font-size:10px;color:#888">'+(l.genkyo||'')+'</td></tr>';});});
   h+='</tbody></table>';document.getElementById('editWrap').innerHTML=h;}
+function toggleLine(i,on){ELINES[i].excluded=!on;var r=document.getElementById('rowE'+i);
+  if(r)r.style.cssText=on?'':'opacity:.4;text-decoration:line-through';recalcEdit();}
 function editLine(i,f,v){var fld=(f===0?'qty':'price');ELINES[i][fld]=parseFloat(v)||0;ELINES[i].amount=Math.round(ELINES[i].qty*ELINES[i].price);
   document.getElementById('amt'+i).textContent=yen(ELINES[i].amount);recalcEdit();}
-function recalcEdit(){var m=EMETA;var direct=0;ELINES.forEach(function(l){direct+=l.amount;});
+function recalcEdit(){var m=EMETA;var direct=0;ELINES.forEach(function(l){if(!l.excluded)direct+=l.amount;});
   var genba=Math.round(direct*m.genbaR),ippan=Math.round(direct*m.ippanR);
   var work=direct+genba+ippan+(m.sekkei||0)+(m.opt||0);var incl=Math.round(work*1.1);
   document.getElementById('incl').textContent=yen(incl);
