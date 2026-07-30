@@ -57,7 +57,7 @@ button.sec{background:#6b7a90}button:hover{opacity:.9}
   </div>
   <details open style="margin-bottom:10px"><summary style="cursor:pointer;color:#1f4e78;font-size:13px;font-weight:700">📄 図面から自動入力（PDFをアップロード）</summary>
    <div id="drop" style="border:2px dashed #9db4cf;border-radius:8px;padding:14px;text-align:center;color:#5a6b80;font-size:13px;background:#f8fbff;cursor:pointer;margin-top:6px">
-     図面PDFをドロップ / クリックで選択<br><span style="font-size:11px">→ Claudeが延床・室数などを自動抽出（案件種別を先に選択）</span>
+     図面PDFをドロップ / クリックで選択<br><span style="font-size:11px">→ <b>平面図は必須</b>。立面図・建具表・電気図面も一緒でOK（精度UP・電気図面から機器台数も抽出）／案件種別を先に選択</span>
      <input type="file" id="pdf" accept="application/pdf" style="display:none">
    </div>
    <div id="aiStatus" class="note"></div>
@@ -532,14 +532,21 @@ async function checkPower(){var el=document.getElementById('powerResult');el.inn
       +'<div style="color:#888;margin-top:4px">'+d.notes.join('／')+'</div></div>';
   }catch(e){el.innerHTML='⚠ '+e.message;}}
 function toB64(f){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result.split(',')[1]);};r.onerror=rej;r.readAsDataURL(f);});}
-async function sendPdf(file){var st=document.getElementById('aiStatus');st.textContent='図面を解析中…（Claude）';
+var BKEYS=['nobiyuka','kenchiku','tsubo','shinsatsu','kodomo','kyosei','xray','xarea','shodoku','gikou','tearai','toilet','ac_s','ac_k'];
+var EMAP={comp:'e_comp',blowp:'e_blowp',blows:'e_blows',cadcam:'e_cadcam',miele:'e_miele',ster:'e_ster'};
+function fillFromJson(j){var n=0,e=0;
+  BKEYS.forEach(function(k){if(j[k]!=null&&!isNaN(parseFloat(j[k]))){var el=document.getElementById(k);if(el){el.value=j[k];n++;}}});
+  Object.keys(EMAP).forEach(function(k){if(j[k]!=null&&!isNaN(parseFloat(j[k]))){var el=document.getElementById(EMAP[k]);if(el){el.value=j[k];e++;}}});
+  return {n:n,e:e};}
+async function sendPdf(file){var st=document.getElementById('aiStatus');
+  if(file && file.size>25*1024*1024){st.innerHTML='⚠ 図面が大きすぎます（'+(file.size/1048576).toFixed(1)+'MB）。平面図中心に絞るか解像度を下げてください。';return;}
+  st.textContent='図面を解析中…（平面図を優先／図面が多いと30秒ほどかかります）';
   try{var b64=await toB64(file);
     var r=await fetch(SB_URL+'/functions/v1/analyze-drawing',{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({pdf:b64})});
     var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
-    var j=d.params||{};var keys=['nobiyuka','kenchiku','tsubo','shinsatsu','kodomo','kyosei','xray','xarea','shodoku','gikou','tearai','toilet','ac_s','ac_k'];
-    var n=0;keys.forEach(function(k){if(j[k]!=null&&!isNaN(parseFloat(j[k]))){document.getElementById(k).value=j[k];n++;}});
-    run();st.innerHTML='✓ '+n+'項目を自動入力'+(j.summary?'（'+j.summary+'）':'');
-  }catch(e){st.innerHTML='⚠ '+e.message+'（手入力/貼り付けで続行できます）';}}
+    var j=d.params||{};var res=fillFromJson(j);
+    run();st.innerHTML='✓ 建物'+res.n+'項目'+(res.e?'＋電気'+res.e+'項目':'')+'を自動入力'+(j.summary?'（'+j.summary+'）':'');
+  }catch(e){st.innerHTML='⚠ '+e.message+'（平面図だけに絞る／手入力／貼り付けで続行できます）';}}
 (function(){var drop=document.getElementById('drop'),pdf=document.getElementById('pdf');if(!drop)return;
   drop.onclick=function(){pdf.click();};
   drop.ondragover=function(e){e.preventDefault();drop.style.background='#e8f1ff';};
@@ -551,9 +558,8 @@ function applyAutofill(){var st=document.getElementById('status');
   if(!txt){st.textContent='貼り付け欄が空です';return;}
   var m=txt.match(/\{[\s\S]*\}/);if(m)txt=m[0];
   var j;try{j=JSON.parse(txt);}catch(e){st.textContent='JSONを読めません: '+e.message;return;}
-  var keys=['nobiyuka','kenchiku','tsubo','shinsatsu','kodomo','kyosei','xray','xarea','shodoku','gikou','tearai','toilet','ac_s','ac_k'];
-  var n=0;keys.forEach(function(k){if(j[k]!=null&&!isNaN(parseFloat(j[k]))){document.getElementById(k).value=j[k];n++;}});
-  run();st.textContent='✓ '+n+'項目を自動入力'+(j.summary?'（'+j.summary+'）':'');}
+  var res=fillFromJson(j);
+  run();st.textContent='✓ 建物'+res.n+'項目'+(res.e?'＋電気'+res.e+'項目':'')+'を自動入力'+(j.summary?'（'+j.summary+'）':'');}
 document.querySelectorAll('#nobiyuka,#kenchiku,#tsubo,#shinsatsu,#kodomo,#kyosei,#xray,#xarea,#shodoku,#gikou,#tearai,#toilet,#ac_s,#ac_k,#gmargin,#genba,#ippan,#sekkei,#elec_override').forEach(el=>el.addEventListener('input',debounce));
 initAuth();
 </script></body></html>
