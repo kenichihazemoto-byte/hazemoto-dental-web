@@ -224,7 +224,11 @@ function buildOpts(av){const box=document.getElementById('optbox');
   // 初回/種別変更時のみ構築
   if(box.getAttribute('data-type')!==CUR){box.innerHTML='';box.setAttribute('data-type',CUR);
     av.forEach(o=>{OPTSTATE[o.name]=o.on;const d=document.createElement('label');d.className='opt';
-      d.innerHTML='<input type="checkbox" '+(o.on?'checked':'')+'> '+o.name+'<span class="price">'+yen(o.g)+'</span>';
+      var basis=(o.unit==='式'||!o.unit)?('一式'):((o.qty)+o.unit+' × @'+yen(o.g));
+      d.innerHTML='<input type="checkbox" '+(o.on?'checked':'')+'>'
+        +'<div style="flex:1;min-width:0"><div style="font-weight:600">'+o.name+'</div>'
+        +'<div style="font-size:10.5px;color:#8a94a0">'+basis+(o.genkyo?'（'+o.genkyo+'）':'')+'</div></div>'
+        +'<span class="price"><b>'+yen(o.amount)+'</b></span>';
       d.querySelector('input').addEventListener('change',function(){OPTSTATE[o.name]=this.checked;run();});
       box.appendChild(d);});}
 }
