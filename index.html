@@ -94,9 +94,10 @@ button.sec{background:#6b7a90}button:hover{opacity:.9}
   <div id="demoWrap" style="margin-top:8px;display:none"><label>解体工事（テナント：現況区分）</label>
    <select id="demo" onchange="run()"><option value="1">居抜き解体（標準）×1.0</option><option value="0">スケルトン渡し・解体なし ×0</option><option value="1.4">全面解体・スラブ現し ×1.4</option></select>
    <div class="note">※解体工事(T02)の金額を増減します。新築では影響しません。</div></div>
-  <div style="margin-top:8px"><label>資材高騰係数（建材・サッシ等の値上げ上乗せ）</label>
-   <input type="number" id="matup" value="0" step="0.5" min="0" style="width:70px" onchange="run()"> ％
-   <div class="note">※10月〜の建材・サッシ・木材等の値上げ対応。<b>材料系工種に一律上乗せ</b>（仮設・解体・電気・空調・給排水・照明・消防・諸経費は対象外）。原価も同率で上がり<b>粗利率は維持</b>されます。0で無効。</div></div>
+  <div style="margin-top:8px"><label>資材高騰対応（2026年 建材・サッシ値上げ）</label><br>
+   <select id="matrev" onchange="run()" style="max-width:100%"><option value="">なし（据え置き）</option><option value="2026oct">2026年10月改定（研究値・工種別）</option></select>
+   　＋手動 <input type="number" id="matup" value="0" step="0.5" min="0" style="width:56px" onchange="run()"> ％
+   <div class="note">※プリセット＝各社公表値から<b>工種別に上乗せ</b>（サッシ+12／ボード+14／木工+10／内装+10%等）。手動％は材料系工種への追加一律上乗せ。原価も同率で上がり<b>粗利率は維持</b>。研究値のため正式通知が出たら微調整可（DBで即修正）。</div></div>
   <h2 style="margin-top:16px">⚡ 電気容量チェック（初期確認・価格反映）</h2>
   <div class="note" style="margin-bottom:6px">電気容量は最大の変動要因。医療機器から負荷を計算し、主幹A・幹線・動力盤・容量不足を確認して価格に反映します。</div>
   <div class="grid">
@@ -184,7 +185,7 @@ function params(){const shinsatsu=num('shinsatsu')+num('kodomo');const kyosei=nu
 function reqBody(){const gm=document.getElementById('gmargin').value;
   return {use_type:CUR,params:params(),gmargin:gm===''?null:parseFloat(gm),
     genbaR:document.getElementById('genba').value,ippanR:document.getElementById('ippan').value,
-    sekkei:num('sekkei'),specf:document.getElementById('specf').value,demo:document.getElementById('demo').value,matup:document.getElementById('matup').value,opts:OPTSTATE,elec_override:num('elec_override')};}
+    sekkei:num('sekkei'),specf:document.getElementById('specf').value,demo:document.getElementById('demo').value,matup:document.getElementById('matup').value,matrev:document.getElementById('matrev').value,opts:OPTSTATE,elec_override:num('elec_override')};}
 
 async function run(){if(EDIT)return;const st=document.getElementById('status');st.textContent='計算中…';
   try{
@@ -239,7 +240,7 @@ function onType(){CUR=document.getElementById('ptype').value;const c=PT[CUR];
   document.getElementById('genba').value=c.genba;document.getElementById('ippan').value=c.ippan;document.getElementById('sekkei').value=c.sekkei;
   document.getElementById('specf').value='1.00';
   document.getElementById('demo').value='1';document.getElementById('demoWrap').style.display=(CUR==='tenant')?'block':'none';
-  document.getElementById('matup').value='0';
+  document.getElementById('matup').value='0';document.getElementById('matrev').value='';
   document.getElementById('ptypeNote').textContent='※'+c.label+'：'+c.note+(CUR==='tenant'?'（延床・室数を入力してください）':'');
   PIDS.forEach(id=>{document.getElementById(id).value=(CUR==='tenant')?'':(PDEF_SHINCHIKU[id]||'');});
   OPTSTATE={};document.getElementById('optbox').removeAttribute('data-type');
