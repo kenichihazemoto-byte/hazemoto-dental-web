@@ -46,8 +46,35 @@ button{background:var(--blue);color:#fff;border:0;cursor:pointer}
   <div id="cards" class="cards"></div>
   <div class="panel"><h2>種別別サマリ</h2><div id="byUse" class="bars"></div></div>
   <div class="panel"><h2>ステータス別</h2><div id="byStatus" class="bars"></div></div>
-  <div class="panel"><h2>活動一覧</h2><div style="overflow-x:auto"><table id="tbl"><thead><tr><th class="l">案件／顧客</th><th class="l">種別</th><th>精度</th><th class="l">状態</th><th>坪</th><th>税込</th><th>坪単価</th><th class="l">担当</th><th class="l">日付</th></tr></thead><tbody></tbody></table></div>
+  <div class="panel"><h2>活動一覧</h2><div style="overflow-x:auto"><table id="tbl"><thead><tr><th class="l">案件／顧客</th><th class="l">種別</th><th>精度</th><th class="l">状態</th><th>坪</th><th>税込</th><th>坪単価</th><th class="l">担当</th><th class="l">日付</th><th class="l">操作</th></tr></thead><tbody></tbody></table></div>
    <div class="note">※原価・粗利率は保持していません（売価・活動情報のみ）。データはサーバ側で取得（社内限定）。</div>
+  </div>
+</div>
+<div id="editOv" style="display:none;position:fixed;inset:0;background:rgba(20,40,60,.55);align-items:flex-start;justify-content:center;z-index:1000;overflow:auto;padding:24px">
+  <div style="background:#fff;border-radius:12px;max-width:900px;width:100%;padding:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #1f4e78;padding-bottom:8px;margin-bottom:12px">
+      <div style="font-size:17px;font-weight:700;color:#1f4e78">✏️ 活動の編集 ― <span id="edTitle"></span></div>
+      <button onclick="closeEdit()" style="background:#6b7a90;padding:5px 12px">閉じる</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div><label style="font-size:11px;color:#555">案件名／顧客</label><input id="ed_customer" style="width:100%;padding:6px;border:1px solid #dfe4ea;border-radius:6px"></div>
+      <div><label style="font-size:11px;color:#555">担当者</label><input id="ed_staff" style="width:100%;padding:6px;border:1px solid #dfe4ea;border-radius:6px"></div>
+      <div><label style="font-size:11px;color:#555">ステータス</label><select id="ed_status" style="width:100%;padding:6px;border:1px solid #dfe4ea;border-radius:6px"><option>概算</option><option>提出済</option><option>商談中</option><option>受注</option><option>失注</option><option>保留</option></select></div>
+      <div><label style="font-size:11px;color:#555">精度</label><select id="ed_acc" style="width:100%;padding:6px;border:1px solid #dfe4ea;border-radius:6px"><option>A</option><option>B</option><option>C</option></select></div>
+      <div style="grid-column:span 2"><label style="font-size:11px;color:#555">前提条件</label><input id="ed_assume" style="width:100%;padding:6px;border:1px solid #dfe4ea;border-radius:6px"></div>
+      <div style="grid-column:span 3"><label style="font-size:11px;color:#555">未確認事項</label><input id="ed_unconf" style="width:100%;padding:6px;border:1px solid #dfe4ea;border-radius:6px"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 6px">
+      <h2 style="margin:0">明細（追加・削除・数量/単価 修正）</h2>
+      <button onclick="edAdd()" style="padding:5px 12px;background:#2f8f5b">＋ 行を追加</button>
+    </div>
+    <div id="edLines" style="overflow-x:auto;max-height:46vh;overflow-y:auto;border:1px solid #eef0f2;border-radius:6px"></div>
+    <div id="edTotal" style="margin-top:10px;font-size:14px;background:#eef4fb;border-radius:6px;padding:8px 12px"></div>
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+      <button onclick="saveEdit()" style="padding:10px 20px;font-size:14px">☁ 保存する</button>
+      <button onclick="closeEdit()" class="" style="padding:10px 16px;background:#6b7a90">キャンセル</button>
+      <span id="edMsg" class="note"></span>
+    </div>
   </div>
 </div>
 <script>
@@ -89,7 +116,65 @@ function renderList(){var fu=document.getElementById('fUse').value,fs=document.g
     return '<tr><td class="l">'+(r.customer_name||'')+'</td><td class="l ut-'+r.use_type+'">'+lbl(r.use_type)+'</td>'
       +'<td>'+(r.accuracy||'')+'</td><td class="l"><span class="chip st-'+r.status+'">'+(r.status||'')+'</span></td>'
       +'<td>'+(r.area_tsubo||'')+'</td><td>'+yen(r.total_amount_incl)+'</td><td>'+(r.unit_price_tsubo_man?r.unit_price_tsubo_man+'万':'')+'</td>'
-      +'<td class="l">'+(r.assigned_staff||'')+'</td><td class="l">'+(r.created_at||'').slice(0,10)+'</td></tr>';
-  }).join('')||'<tr><td colspan="9" class="l" style="color:#888">該当データなし（見積アプリで保存すると貯まります）</td></tr>';}
+      +'<td class="l">'+(r.assigned_staff||'')+'</td><td class="l">'+(r.created_at||'').slice(0,10)+'</td>'
+      +'<td class="l" style="white-space:nowrap"><button onclick="editRow(\''+r.id+'\')" style="padding:3px 8px;font-size:11px">✏️編集</button> <button onclick="delRow(\''+r.id+'\',\''+(r.customer_name||'').replace(/\x27/g,"")+'\')" style="padding:3px 8px;font-size:11px;background:#c0392b">🗑</button></td></tr>';
+  }).join('')||'<tr><td colspan="10" class="l" style="color:#888">該当データなし（見積アプリで保存すると貯まります）</td></tr>';}
+
+// ===== 削除 =====
+async function delRow(id,name){if(!confirm('この活動を削除しますか？\n「'+name+'」\n※元に戻せません'))return;
+  try{var r=await fetch(SB_URL+'/functions/v1/activities',{method:'POST',headers:api(),body:JSON.stringify({action:'delete',id:id})});
+    var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));load();
+  }catch(e){alert('削除失敗: '+e.message);}}
+function api(){return {'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'};}
+
+// ===== 編集（サマリ＋明細の追加/削除/単価数量修正）=====
+var ED={id:null,lines:[],meta:{},row:null};
+async function editRow(id){var ov=document.getElementById('editOv');document.getElementById('edMsg').textContent='読込中…';ov.style.display='flex';
+  try{var r=await fetch(SB_URL+'/functions/v1/activities',{method:'POST',headers:api(),body:JSON.stringify({action:'get',id:id})});
+    var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
+    var row=d.row;ED={id:id,lines:(row.lines||[]).map(function(l){return Object.assign({},l);}),meta:row.meta||{},row:row};
+    document.getElementById('edTitle').textContent=(row.customer_name||'')+'（'+lbl(row.use_type)+'）';
+    document.getElementById('ed_customer').value=row.customer_name||'';
+    document.getElementById('ed_staff').value=row.assigned_staff||'';
+    document.getElementById('ed_status').value=row.status||'概算';
+    document.getElementById('ed_acc').value=row.accuracy||'B';
+    document.getElementById('ed_assume').value=row.assumptions||'';
+    document.getElementById('ed_unconf').value=row.unconfirmed||'';
+    renderEdLines();document.getElementById('edMsg').textContent=ED.lines.length?'':'※この案件は明細スナップショットなし（サマリのみ編集可）。見積アプリで作り直すと明細付きで保存されます。';
+  }catch(e){document.getElementById('edMsg').textContent='⚠ '+e.message;}}
+function closeEdit(){document.getElementById('editOv').style.display='none';}
+function renderEdLines(){var groups={};ED.lines.forEach(function(l,i){(groups[l.cattitle||l.cat||'その他']=groups[l.cattitle||l.cat||'その他']||[]).push(i);});
+  var h='<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr><th class="l">名称</th><th>数量</th><th>単位</th><th>単価</th><th>金額</th><th></th></tr></thead><tbody>';
+  Object.keys(groups).forEach(function(g){
+    h+='<tr style="background:#eef2f7;font-weight:700"><td class="l" colspan="6">'+g+'</td></tr>';
+    groups[g].forEach(function(i){var l=ED.lines[i];
+      h+='<tr><td class="l"><input value="'+(l.name||'').replace(/"/g,"&quot;")+'" style="width:98%;padding:2px" oninput="edSet('+i+',\'name\',this.value)"></td>'
+        +'<td><input type="number" value="'+(l.qty||0)+'" style="width:60px;text-align:right;padding:2px" oninput="edSet('+i+',\'qty\',this.value)"></td>'
+        +'<td><input value="'+(l.unit||'')+'" style="width:40px;padding:2px"  oninput="edSet('+i+',\'unit\',this.value)"></td>'
+        +'<td><input type="number" value="'+(l.price||0)+'" style="width:88px;text-align:right;padding:2px" oninput="edSet('+i+',\'price\',this.value)"></td>'
+        +'<td id="edAmt'+i+'" style="text-align:right">'+yen(l.amount)+'</td>'
+        +'<td><button onclick="edDel('+i+')" style="padding:2px 6px;background:#c0392b;font-size:11px">削除</button></td></tr>';});});
+  h+='</tbody></table>';document.getElementById('edLines').innerHTML=h;edRecalc();}
+function edSet(i,f,v){var l=ED.lines[i];l[f]=(f==='name'||f==='unit')?v:(parseFloat(v)||0);l.amount=Math.round((l.qty||0)*(l.price||0));
+  var el=document.getElementById('edAmt'+i);if(el)el.textContent=yen(l.amount);edRecalc();}
+function edDel(i){ED.lines.splice(i,1);renderEdLines();}
+function edAdd(){ED.lines.push({cat:'',cattitle:'追加項目',name:'',unit:'式',qty:1,price:0,amount:0,genkyo:'手動追加'});renderEdLines();}
+function edRecalc(){var m=ED.meta||{};var direct=0;ED.lines.forEach(function(l){direct+=(l.amount||0);});
+  var genba=Math.round(direct*(m.genbaR||0)),ippan=Math.round(direct*(m.ippanR||0));
+  var work=direct+genba+ippan+(m.sekkei||0)+(m.opt||0);var incl=Math.round(work*1.1);
+  var tsubo=m.tsubo||ED.row&&ED.row.area_tsubo||0;var tman=tsubo?Math.round(work/tsubo/100)/100:null;
+  ED._work=work;ED._incl=incl;ED._tman=tman;
+  document.getElementById('edTotal').innerHTML='直接工事 '+yen(direct)+'　→　工事価格(税抜) <b>'+yen(work)+'</b>　税込 <b style="color:#1f4e78">'+yen(incl)+'</b>'+(tman?'　坪 '+tman+'万':'');}
+async function saveEdit(){var msg=document.getElementById('edMsg');msg.style.color='#555';msg.textContent='保存中…';
+  var fields={customer_name:document.getElementById('ed_customer').value.trim(),
+    assigned_staff:document.getElementById('ed_staff').value.trim()||null,
+    status:document.getElementById('ed_status').value,accuracy:document.getElementById('ed_acc').value,
+    assumptions:document.getElementById('ed_assume').value.trim()||null,
+    unconfirmed:document.getElementById('ed_unconf').value.trim()||null};
+  if(ED.lines.length){fields.lines=ED.lines;fields.total_amount_excl=ED._work;fields.total_amount_incl=ED._incl;fields.unit_price_tsubo_man=ED._tman;}
+  try{var r=await fetch(SB_URL+'/functions/v1/activities',{method:'POST',headers:api(),body:JSON.stringify({action:'update',id:ED.id,fields:fields})});
+    var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
+    closeEdit();load();
+  }catch(e){msg.style.color='#c00000';msg.textContent='⚠ 保存失敗: '+e.message;}}
 initAuth();
 </script></body></html>

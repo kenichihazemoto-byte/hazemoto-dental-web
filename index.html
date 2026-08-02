@@ -252,7 +252,23 @@ async function saveActivity(){const msg=document.getElementById('act_msg');
   const cust=(document.getElementById('act_customer').value||'').trim();
   if(!cust){msg.style.color='#c00000';msg.textContent='案件名／顧客を入力してください';return;}
   const p=params();const tsubo=p.tsubo||0;
+  msg.style.color='#555';msg.textContent='保存中…（明細も保存）';
+  // ===== 明細スナップショット（後で再編集できるように保存）=====
+  var snapLines=[], meta={genbaR:LAST.genbaR,ippanR:LAST.ippanR,sekkei:LAST.sekkei,opt:LAST.opt,tsubo:tsubo};
+  try{
+    if(EDIT&&ELINES.length){
+      snapLines=ELINES.filter(function(l){return !l.excluded;}).map(function(l){return {cat:l.cat,cattitle:l.cattitle,name:l.name,unit:l.unit||'',qty:l.qty,price:l.price,amount:l.amount,genkyo:l.genkyo||''};});
+      meta={genbaR:EMETA.genbaR,ippanR:EMETA.ippanR,sekkei:EMETA.sekkei||0,opt:EMETA.opt||0,tsubo:tsubo};
+    }else{
+      var db=reqBody();db.detail=true;
+      var dr=await fetch(FN,{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(db)});
+      var dd=await dr.json();var sf=dd.specFactor||1;
+      snapLines=(dd.lines||[]).filter(function(l){return l.amount>0;}).map(function(l){return {cat:l.cat,cattitle:l.cattitle,name:l.name,unit:l.unit||'',qty:l.qty,price:Math.round(l.price*sf),amount:Math.round(l.amount*sf),genkyo:l.genkyo||''};});
+      meta={genbaR:dd.genbaR,ippanR:dd.ippanR,sekkei:dd.sekkei,opt:dd.opt,tsubo:tsubo};
+    }
+  }catch(e){}
   const payload={source:'estimate-web',app_version:'web1',use_type:PT[CUR].usetype,customer_name:cust,
+    lines:snapLines,meta:meta,
     assigned_staff:(document.getElementById('act_staff').value||'').trim()||null,
     accuracy:document.getElementById('act_acc').value,status:document.getElementById('act_status').value,
     floor_area_m2:p.nobiyuka,building_area_m2:p.kenchiku,area_tsubo:p.tsubo,
@@ -262,9 +278,9 @@ async function saveActivity(){const msg=document.getElementById('act_msg');
     assumptions:(document.getElementById('act_assume').value||'').trim()||null,
     unconfirmed:(document.getElementById('act_unconf').value||'').trim()||null};
   msg.style.color='#555';msg.textContent='保存中…';
-  try{const r=await fetch(SB_URL+'/rest/v1/estimate_activities',{method:'POST',
-      headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'Content-Type':'application/json','Prefer':'return=minimal'},body:JSON.stringify(payload)});
-    if(!r.ok)throw new Error(r.status+' '+(await r.text()));
+  try{const r=await fetch(SB_URL+'/functions/v1/activities',{method:'POST',
+      headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({action:'create',record:payload})});
+    var rj=await r.json();if(!r.ok||rj.error)throw new Error(rj.error||('HTTP '+r.status));
     msg.style.color='#375623';msg.textContent='✓ 活動DBに記録（'+PT[CUR].label+'／'+cust+'）';
     ['act_customer','act_assume','act_unconf'].forEach(id=>document.getElementById(id).value='');
   }catch(e){msg.style.color='#c00000';msg.textContent='⚠ 保存失敗: '+e.message;}}
