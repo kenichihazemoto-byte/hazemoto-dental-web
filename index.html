@@ -46,7 +46,7 @@ button.sec{background:#6b7a90}button:hover{opacity:.9}
     <div style="color:#888;font-size:11px;margin-top:10px">社内アカウントでログインしてください。</div>
   </div>
 </div>
-<header><h1>ハゼモト建設｜歯科クリニック 見積アプリ</h1><div class="sub">サーバ計算版（原価・単価はSupabase内で計算／ブラウザに出しません）　<a href="activities.html" style="color:#cfe0f5">📊 活動DB（蓄積ビュー）→</a>　<a href="#" onclick="doLogout();return false" style="color:#cfe0f5">ログアウト</a>　<span style="color:#8fa6c4;font-size:11px">版 2026-08-05b（古い表示なら ⌘/Ctrl+Shift+R）</span></div>
+<header><h1>ハゼモト建設｜歯科クリニック 見積アプリ</h1><div class="sub">サーバ計算版（原価・単価はSupabase内で計算／ブラウザに出しません）　<a href="activities.html" style="color:#cfe0f5">📊 活動DB（蓄積ビュー）→</a>　<a href="#" onclick="doLogout();return false" style="color:#cfe0f5">ログアウト</a>　<span style="color:#8fa6c4;font-size:11px">版 2026-08-05c（古い表示なら ⌘/Ctrl+Shift+R）</span></div>
 <div style="margin-top:8px;background:#1f7a4d;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;font-weight:700">
 🔒 社内限定｜このアプリは<u>原価・単価を持ちません</u>（サーバ側で計算）。URLは社内のみで共有してください。</div></header>
 <div class="wrap">
@@ -68,6 +68,7 @@ button.sec{background:#6b7a90}button:hover{opacity:.9}
    </details>
   </details>
   <h2>① 建物パラメータ</h2>
+  <div id="presetBar" style="margin:2px 0 6px;font-size:11px;color:#555"></div>
   <div class="grid">
    <div><label>延床/施工面積(㎡)</label><input type="number" id="nobiyuka" value="189.63" step="0.01"></div>
    <div><label>建築面積(㎡)</label><input type="number" id="kenchiku" value="144.08" step="0.01"></div>
@@ -129,6 +130,7 @@ button.sec{background:#6b7a90}button:hover{opacity:.9}
   <div class="big"><div class="lbl">御見積金額（税込・概算）</div><div class="amt" id="incl">-</div>
    <div class="row"><span>税抜 <b id="excl">-</b></span><span>坪単価 <b id="tsuboUnit">-</b></span><span>粗利率 <b id="margin">-</b></span></div><div id="specBadge"></div></div>
   <div id="valid"></div>
+  <div id="diag"></div>
   <div class="panel savebox">
    <h2 style="margin-top:0">③ この概算を「活動DB」に記録（1タップ）</h2>
    <div class="grid">
@@ -160,7 +162,7 @@ const sbAuth=window.supabase.createClient(SB_URL,PUB_KEY);
 let AUTHTOKEN=PUB_KEY;
 function fillStaff(s){try{var u=s&&s.user;if(!u)return;var nm=(u.user_metadata&&u.user_metadata.name)||((u.email||'').split('@')[0]);var el=document.getElementById('act_staff');if(el&&!el.value)el.value=nm;}catch(e){}}
 async function initAuth(){var s=(await sbAuth.auth.getSession()).data.session;
-  if(s){AUTHTOKEN=s.access_token;document.getElementById('loginOverlay').style.display='none';fillStaff(s);run();}
+  if(s){AUTHTOKEN=s.access_token;document.getElementById('loginOverlay').style.display='none';fillStaff(s);var lp=new URLSearchParams(location.search).get('load');if(lp){restoreActivity(lp);}else{run();}}
   else{document.getElementById('loginOverlay').style.display='flex';}}
 async function doLogin(){var msg=document.getElementById('loginMsg');msg.textContent='認証中…';msg.style.color='#555';
   var em=document.getElementById('loginEmail').value.trim(),pw=document.getElementById('loginPass').value;
@@ -223,6 +225,34 @@ function render(d){
   const cSho=chip(shoPct>=12&&shoPct<=22,shoPct>=9,'諸経費率 '+shoPct.toFixed(0)+'%');
   const cM=chip(mg>=CF.mgLo&&mg<=CF.mgHi,mg>=CF.mgLo-0.03,'粗利率 '+(mg*100).toFixed(0)+'%');
   document.getElementById('valid').innerHTML='<div style="margin:8px 0;font-size:13px">妥当性【'+CF.label+'】: '+cT+' '+cS+' '+cSho+' '+cM+'</div>';
+  diagnose(d,CF,tu,setPct,shoPct,mg);
+}
+function diagnose(d,CF,tu,setPct,shoPct,mg){
+  var W=[]; // {sev:'warn'|'alert', msg}
+  if(CF.tsuboLo>0){
+    if(tu<CF.tsuboLo) W.push(['alert','坪単価 '+tu.toFixed(0)+'万 が相場帯('+CF.tsuboLo+'〜'+CF.tsuboHi+'万)より低い → 計上漏れ・数量過少の疑い。設備/造作/建具を確認']);
+    else if(tu>CF.tsuboHi) W.push(['warn','坪単価 '+tu.toFixed(0)+'万 が相場帯より高い → 仕様過剰・重複計上の確認']);
+  }
+  var mgP=mg*100, mLo=CF.mgLo*100, mHi=CF.mgHi*100;
+  if(mgP<mLo) W.push(['alert','粗利率 '+mgP.toFixed(0)+'% が目標('+mLo.toFixed(0)+'〜'+mHi.toFixed(0)+'%)未満 → 原価過大 or 売価不足']);
+  else if(mgP>mHi) W.push(['warn','粗利率 '+mgP.toFixed(0)+'% が目標超過 → 価格を下げて競争力を取る余地']);
+  var slo=CF.setLo>0?CF.setLo:25, shi=CF.setHi>0?CF.setHi:34;
+  if(setPct<slo-3) W.push(['alert','設備比率 '+setPct.toFixed(0)+'% が低い（目安'+slo+'〜'+shi+'%）→ 電気・空調・給排水・換気の計上漏れ疑い']);
+  else if(setPct>shi+4) W.push(['warn','設備比率 '+setPct.toFixed(0)+'% が高い → 設備の過剰・重複を確認']);
+  if(shoPct<12) W.push(['warn','諸経費率 '+shoPct.toFixed(0)+'% が薄い → 現場管理費の過小計上を確認']);
+  // 工種構成：突出／主要工種ゼロ
+  var work=d.work||1;
+  (d.rows||[]).forEach(function(r){ if(r.sell>0 && r.sell/work>0.35) W.push(['warn',r.cat+' '+r.title+' が全体の'+Math.round(r.sell/work*100)+'% → 突出。数量・単価を再確認']); });
+  var setsubiCats=(CF.usetype==='歯科新築')?[['A.15','電気'],['A.16','空調'],['A.19','給排水']]:[['T08','電気'],['T10','給排水'],['T11','空調']];
+  setsubiCats.forEach(function(c){ var row=(d.rows||[]).find(function(r){return r.cat===c[0];}); if(row && row.sell<=0) W.push(['alert',c[1]+'工事('+c[0]+')が¥0 → 計上漏れの疑い']); });
+  // 電気容量 未チェック
+  if(!(d.elecOverride>0) && !window.__elecChecked) W.push(['warn','電気容量チェック未実施 → 医療機器から主幹A・動力盤を確認（最大の変動要因）']);
+  var box=document.getElementById('diag');
+  if(!W.length){ box.innerHTML='<div style="margin:2px 0 8px;font-size:12px;color:#2f8f5b;font-weight:700">✅ 自己診断：主要指標は健全です</div>'; return; }
+  box.innerHTML='<div style="margin:6px 0 8px;border:1px solid #e6c67a;background:#fff8e8;border-radius:8px;padding:8px 10px">'
+    +'<div style="font-size:12px;font-weight:700;color:#8a5a00;margin-bottom:4px">🩺 見積の自己診断（'+W.length+'件）</div>'
+    +W.map(function(w){var col=w[0]==='alert'?'#c0392b':'#8a5a00';var ic=w[0]==='alert'?'⚠':'▲';return '<div style="font-size:11.5px;color:'+col+';line-height:1.5">'+ic+' '+w[1]+'</div>';}).join('')
+    +'</div>';
 }
 function buildOpts(av){const box=document.getElementById('optbox');
   if(!av.length){box.innerHTML='<div class="note">（テナント内装はオプションなし）</div>';return;}
@@ -237,11 +267,25 @@ function buildOpts(av){const box=document.getElementById('optbox');
       d.querySelector('input').addEventListener('change',function(){OPTSTATE[o.name]=this.checked;run();});
       box.appendChild(d);});}
 }
+var PRESETS={
+ shinchiku:[
+  ['標準6チェア',{nobiyuka:189.63,kenchiku:144.08,tsubo:57.24,shinsatsu:5,kodomo:0,kyosei:1,xray:1,xarea:21,shodoku:1,gikou:1,tearai:8,toilet:3,ac_s:6,ac_k:8}],
+  ['小規模4チェア',{nobiyuka:132,kenchiku:100,tsubo:39.9,shinsatsu:3,kodomo:0,kyosei:1,xray:1,xarea:16,shodoku:1,gikou:1,tearai:5,toilet:2,ac_s:4,ac_k:6}],
+  ['大型8チェア',{nobiyuka:248,kenchiku:188,tsubo:75,shinsatsu:6,kodomo:2,kyosei:2,xray:1,xarea:24,shodoku:1,gikou:1,tearai:10,toilet:4,ac_s:8,ac_k:10}]],
+ tenant:[
+  ['標準3チェア',{nobiyuka:62,kenchiku:62,tsubo:18.76,shinsatsu:3,kodomo:0,kyosei:0,xray:1,xarea:18,shodoku:1,gikou:1,tearai:5,toilet:1,ac_s:2,ac_k:2}],
+  ['小規模2チェア',{nobiyuka:45,kenchiku:45,tsubo:13.6,shinsatsu:2,kodomo:0,kyosei:0,xray:1,xarea:12,shodoku:1,gikou:0,tearai:3,toilet:1,ac_s:2,ac_k:1}],
+  ['中規模5チェア',{nobiyuka:99,kenchiku:99,tsubo:30,shinsatsu:4,kodomo:1,kyosei:1,xray:1,xarea:20,shodoku:1,gikou:1,tearai:6,toilet:2,ac_s:3,ac_k:3}]]};
+function applyPreset(i){var arr=PRESETS[CUR];if(!arr||!arr[i])return;var pp=arr[i][1];
+  Object.keys(pp).forEach(function(k){var el=document.getElementById(k);if(el)el.value=pp[k];});reqMark();run();}
+function renderPresets(){var arr=PRESETS[CUR]||[];document.getElementById('presetBar').innerHTML='⚡ 入力プリセット： '+arr.map(function(p,i){return '<button class="sec" style="padding:3px 9px;font-size:11px;margin:1px" onclick="applyPreset('+i+')">'+p[0]+'</button>';}).join('')+' <span style="color:#aaa">（クリックで一括入力→調整）</span>';}
+function reqMark(){var el=document.getElementById('nobiyuka');if(el)el.style.borderColor=(CUR==='tenant'&&!el.value)?'#c0392b':'';}
 function onType(){CUR=document.getElementById('ptype').value;const c=PT[CUR];
   document.getElementById('genba').value=c.genba;document.getElementById('ippan').value=c.ippan;document.getElementById('sekkei').value=c.sekkei;
   document.getElementById('specf').value='1.00';
   document.getElementById('demo').value='1';document.getElementById('demoWrap').style.display=(CUR==='tenant')?'block':'none';
   document.getElementById('matup').value='0';document.getElementById('matrev').value='';
+  renderPresets();
   document.getElementById('ptypeNote').textContent='※'+c.label+'：'+c.note+(CUR==='tenant'?'（延床・室数を入力してください）':'');
   PIDS.forEach(id=>{document.getElementById(id).value=(CUR==='tenant')?'':(PDEF_SHINCHIKU[id]||'');});
   OPTSTATE={};document.getElementById('optbox').removeAttribute('data-type');
@@ -543,7 +587,7 @@ function recalcEdit(){var m=EMETA;var direct=0;ELINES.forEach(function(l){if(!l.
   LAST=Object.assign({},LAST||{},{work:work,incl:incl});}
 function exitEdit(){if(!EDIT)return;EDIT=false;document.getElementById('editWrap').style.display='none';document.getElementById('editWrap').innerHTML='';document.getElementById('tbl').style.display='';document.getElementById('specBadge').style.display='none';run();}
 
-async function checkPower(){var el=document.getElementById('powerResult');el.innerHTML='電気容量を計算中…';
+async function checkPower(){window.__elecChecked=true;var el=document.getElementById('powerResult');el.innerHTML='電気容量を計算中…';
   var p=params();var ackw=num('e_ackw')||(num('ac_s')*5+num('ac_k')*3);
   var body={mode:(CUR==='tenant')?'reno':'new',nobiyuka:p.nobiyuka,existing_main_a:num('e_exist')||0,
     equipment:{chair:p.chair,xray:p.xray,cadcam:num('e_cadcam'),miele:num('e_miele'),compressor:num('e_comp'),blower_power:num('e_blowp'),blower_single:num('e_blows'),sterilizer:num('e_ster'),ac_kw:ackw}};
@@ -590,5 +634,28 @@ function applyAutofill(){var st=document.getElementById('status');
   var res=fillFromJson(j);
   run();st.textContent='✓ 建物'+res.n+'項目'+(res.e?'＋電気'+res.e+'項目':'')+'を自動入力'+(j.summary?'（'+j.summary+'）':'');}
 document.querySelectorAll('#nobiyuka,#kenchiku,#tsubo,#shinsatsu,#kodomo,#kyosei,#xray,#xarea,#shodoku,#gikou,#tearai,#toilet,#ac_s,#ac_k,#gmargin,#genba,#ippan,#sekkei,#matup,#elec_override').forEach(el=>el.addEventListener('input',debounce));
-initAuth();
+async function restoreActivity(id){var st=document.getElementById('status');st.textContent='保存案件を復元中…';
+  try{
+    var r=await fetch(SB_URL+'/functions/v1/activities',{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({action:'get',id:id})});
+    var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
+    var row=d.row;var pt=(row.use_type==='歯科新築')?'shinchiku':'tenant';
+    document.getElementById('ptype').value=pt;onType();
+    var pr=row.params||{};var setv=function(k,v){var el=document.getElementById(k);if(el&&v!=null&&v!=='')el.value=v;};
+    setv('nobiyuka',row.floor_area_m2);setv('kenchiku',row.building_area_m2);setv('tsubo',row.area_tsubo);
+    setv('shinsatsu',pr.shinsatsu);setv('kyosei',pr.kyosei);setv('xray',pr.xray);setv('xarea',pr.xarea);
+    setv('shodoku',pr.shodoku);setv('gikou',pr.gikou);setv('tearai',pr.tearai);setv('toilet',pr.toilet);setv('ac_s',pr.ac_s);setv('ac_k',pr.ac_k);
+    if(pr.spec_factor&&pr.spec_factor!=1){var sf=document.getElementById('specf');if(sf)sf.value=Number(pr.spec_factor).toFixed(2);}
+    setv('act_customer',row.customer_name);setv('act_staff',row.assigned_staff);
+    if(row.status)document.getElementById('act_status').value=row.status;
+    if(row.accuracy)document.getElementById('act_acc').value=row.accuracy;
+    setv('act_assume',row.assumptions);setv('act_unconf',row.unconfirmed);
+    if(row.lines&&row.lines.length){
+      ELINES=row.lines.map(function(l){return {cat:l.cat||'',cattitle:l.cattitle||l.cat||'',name:l.name||'',spec:l.spec||'',unit:l.unit||'',qty:l.qty||0,price:l.price||0,amount:l.amount||Math.round((l.qty||0)*(l.price||0)),genkyo:l.genkyo||''};});
+      EMETA=row.meta||{genbaR:PT[pt].genba,ippanR:PT[pt].ippan,sekkei:PT[pt].sekkei,opt:0,tsubo:row.area_tsubo};
+      EDIT=true;renderEdit();recalcEdit();
+      document.getElementById('tbl').style.display='none';document.getElementById('editWrap').style.display='block';
+      st.innerHTML='📥 「'+(row.customer_name||'')+'」を復元しました（明細編集モード）。修正して「☁ 活動DBに保存」で改訂版を保存できます。';
+    }else{ run();st.innerHTML='📥 「'+(row.customer_name||'')+'」のパラメータを復元（明細なし→マスタで再計算）'; }
+  }catch(e){st.textContent='⚠ 復元失敗: '+e.message;run();}}
+renderPresets();initAuth();
 </script></body></html>

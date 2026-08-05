@@ -118,7 +118,7 @@ function renderList(){var fu=document.getElementById('fUse').value,fs=document.g
       +'<td>'+(r.accuracy||'')+'</td><td class="l"><span class="chip st-'+r.status+'">'+(r.status||'')+'</span></td>'
       +'<td>'+(r.area_tsubo||'')+'</td><td>'+yen(r.total_amount_incl)+'</td><td>'+(r.unit_price_tsubo_man?r.unit_price_tsubo_man+'万':'')+'</td>'
       +'<td class="l">'+(r.assigned_staff||'')+'</td><td class="l">'+(r.created_at||'').slice(0,10)+'</td>'
-      +'<td class="l" style="white-space:nowrap"><button onclick="editRow(\''+r.id+'\')" style="padding:3px 8px;font-size:11px">✏️編集</button> <button onclick="delRow(\''+r.id+'\',\''+(r.customer_name||'').replace(/\x27/g,"")+'\')" style="padding:3px 8px;font-size:11px;background:#c0392b">🗑</button></td></tr>';
+      +'<td class="l" style="white-space:nowrap"><button onclick="location.href=\'index.html?load='+r.id+'\'" style="padding:3px 8px;font-size:11px;background:#2f8f5b">📥開く</button> <button onclick="editRow(\''+r.id+'\')" style="padding:3px 8px;font-size:11px">✏️編集</button> <button onclick="delRow(\''+r.id+'\',\''+(r.customer_name||'').replace(/\x27/g,"")+'\')" style="padding:3px 8px;font-size:11px;background:#c0392b">🗑</button></td></tr>';
   }).join('')||'<tr><td colspan="10" class="l" style="color:#888">該当データなし（見積アプリで保存すると貯まります）</td></tr>';}
 
 // ===== 削除 =====
