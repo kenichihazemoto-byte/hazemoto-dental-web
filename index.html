@@ -46,7 +46,7 @@ button.sec{background:#6b7a90}button:hover{opacity:.9}
     <div style="color:#888;font-size:11px;margin-top:10px">社内アカウントでログインしてください。</div>
   </div>
 </div>
-<header><h1>ハゼモト建設｜歯科クリニック 見積アプリ</h1><div class="sub">サーバ計算版（原価・単価はSupabase内で計算／ブラウザに出しません）　<a href="activities.html" style="color:#cfe0f5">📊 活動DB（蓄積ビュー）→</a>　<a href="#" onclick="doLogout();return false" style="color:#cfe0f5">ログアウト</a>　<span style="color:#8fa6c4;font-size:11px">版 2026-08-05f（古い表示なら ⌘/Ctrl+Shift+R）</span></div>
+<header><h1>ハゼモト建設｜歯科クリニック 見積アプリ</h1><div class="sub">サーバ計算版（原価・単価はSupabase内で計算／ブラウザに出しません）　<a href="activities.html" style="color:#cfe0f5">📊 活動DB（蓄積ビュー）→</a>　<a href="#" onclick="doLogout();return false" style="color:#cfe0f5">ログアウト</a>　<span style="color:#8fa6c4;font-size:11px">版 2026-08-05g（古い表示なら ⌘/Ctrl+Shift+R）</span></div>
 <div style="margin-top:8px;background:#1f7a4d;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;font-weight:700">
 🔒 社内限定｜このアプリは<u>原価・単価を持ちません</u>（サーバ側で計算）。URLは社内のみで共有してください。</div></header>
 <div class="wrap">
@@ -340,9 +340,22 @@ function exportXlsx(){if(!LAST){run();return;}const d=LAST;const aoa=[['ハゼ�
   XLSX.writeFile(wb,'歯科見積_'+new Date().toISOString().slice(0,10)+'.xlsx');}
 
 // ===== 客先提出フォーム（A4横・売価のみ・印刷可） =====
+function editedAgg(){
+  var lines=ELINES.filter(function(l){return !l.excluded && (l.amount||0)>0;});
+  var direct=lines.reduce(function(a,l){return a+(l.amount||0);},0);
+  var m=EMETA||{};
+  var genba=Math.round(direct*(m.genbaR||0)),ippan=Math.round(direct*(m.ippanR||0));
+  var work=direct+genba+ippan+(m.sekkei||0)+(m.opt||0);var incl=Math.round(work*1.1);
+  var tsubo=m.tsubo||params().tsubo||0;
+  var order=[],gm={};
+  lines.forEach(function(l){var k=(l.cat||'')+'|'+(l.cattitle||'');if(!gm[k]){gm[k]={cat:l.cat,title:l.cattitle,sell:0};order.push(k);}gm[k].sell+=l.amount;});
+  var rows=order.map(function(k){var g=gm[k];return {cat:g.cat,title:g.title,sell:g.sell,pct:work>0?g.sell/work:0,margin:0};});
+  return {rows:rows,lines:lines,work:work,incl:incl,direct:direct,genba:genba,ippan:ippan,sekkei:m.sekkei||0,opt:m.opt||0,margin:0,tsuboUnitMan:tsubo?work/tsubo/10000:null,_edited:true};
+}
 function makeProposal(){
-  if(!LAST){run();alert('計算後にもう一度押してください');return;}
-  var d=LAST,p=params();
+  var d=(EDIT&&ELINES.length)?editedAgg():LAST;
+  if(!d){run();alert('計算後にもう一度押してください');return;}
+  var p=params();
   var cust=(document.getElementById('act_customer').value||'　　　　　　　　').trim();
   var staff=(document.getElementById('act_staff').value||'').trim();
   var today=new Date(); var ymd=today.getFullYear()+'年'+(today.getMonth()+1)+'月'+today.getDate()+'日';
@@ -419,15 +432,19 @@ function makeProposal(){
 
 // ===== 客先提出フォーム 小明細版（数量×単価 詳細内訳・売価のみ・A4縦） =====
 async function makeProposalDetail(){
-  var st=document.getElementById('status');st.textContent='明細取得中…';
-  var reqb=reqBody();reqb.detail=true;
+  var st=document.getElementById('status');
   var lines,work,incl;
-  try{
-    var r=await fetch(FN,{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(reqb)});
-    var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
-    lines=(d.lines||[]).filter(function(l){return l.amount>0;});work=d.work;incl=d.incl;
-  }catch(e){st.textContent='⚠ '+e.message;alert('明細取得に失敗：'+e.message);return;}
-  st.textContent='';
+  if(EDIT&&ELINES.length){var ag=editedAgg();lines=ag.lines;work=ag.work;incl=ag.incl;st.textContent='';}
+  else{
+    st.textContent='明細取得中…';
+    var reqb=reqBody();reqb.detail=true;
+    try{
+      var r=await fetch(FN,{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(reqb)});
+      var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
+      lines=(d.lines||[]).filter(function(l){return l.amount>0;});work=d.work;incl=d.incl;
+    }catch(e){st.textContent='⚠ '+e.message;alert('明細取得に失敗：'+e.message);return;}
+    st.textContent='';
+  }
   var p=params();
   var cust=(document.getElementById('act_customer').value||'　　　　　　　　').trim();
   var staff=(document.getElementById('act_staff').value||'').trim();
@@ -487,6 +504,7 @@ async function makeProposalDetail(){
 
 // ===== 実行予算 vs 提出見積 比較（社内・原価表示） =====
 function makeBudgetCompare(){
+  if(EDIT&&ELINES.length){if(!confirm('明細編集モードです。実行予算(原価)は編集後の値を保持できません。\n編集前の原価ベースで比較表を表示しますか？\n（正確な原価比較は「🔄パラメータ計算に戻す」後に）'))return;}
   if(!LAST){run();alert('計算後にもう一度押してください');return;}
   var d=LAST,pt=PT[CUR];
   var cust=(document.getElementById('act_customer').value||'（案件名）').trim();
