@@ -47,7 +47,7 @@ button{background:var(--blue);color:#fff;border:0;cursor:pointer}
   <div id="cards" class="cards"></div>
   <div class="panel"><h2>種別別サマリ</h2><div id="byUse" class="bars"></div></div>
   <div class="panel"><h2>ステータス別</h2><div id="byStatus" class="bars"></div></div>
-  <div class="panel"><h2>活動一覧</h2><div style="overflow-x:auto"><table id="tbl"><thead><tr><th class="l">案件／顧客</th><th class="l">種別</th><th>精度</th><th class="l">状態</th><th>坪</th><th>税込</th><th>坪単価</th><th class="l">担当</th><th class="l">日付</th><th class="l">操作</th></tr></thead><tbody></tbody></table></div>
+  <div class="panel"><h2>活動一覧</h2><div style="overflow-x:auto"><table id="tbl"><thead><tr><th class="l">見積No</th><th class="l">案件／顧客</th><th class="l">種別</th><th>精度</th><th class="l">状態</th><th>坪</th><th>税込</th><th>坪単価</th><th class="l">担当</th><th class="l">日付</th><th class="l">操作</th></tr></thead><tbody></tbody></table></div>
    <div class="note">※原価・粗利率は保持していません（売価・活動情報のみ）。データはサーバ側で取得（社内限定）。</div>
   </div>
 </div>
@@ -120,12 +120,12 @@ function lbl(u){return u==='歯科新築'?'木造新築':u==='歯科テナント
 function renderList(){var fu=document.getElementById('fUse').value,fs=document.getElementById('fStatus').value;
   var rows=DATA.list.filter(r=>(!fu||r.use_type===fu)&&(!fs||r.status===fs));
   document.querySelector('#tbl tbody').innerHTML=rows.map(function(r){
-    return '<tr><td class="l">'+(r.customer_name||'')+'</td><td class="l ut-'+r.use_type+'">'+lbl(r.use_type)+'</td>'
+    return '<tr><td class="l" style="font-size:11px;white-space:nowrap">'+(r.quote_no||'')+((r.revision&&r.revision>1)?' <span style="color:#c0392b">改'+r.revision+'</span>':'')+'</td><td class="l">'+(r.customer_name||'')+'</td><td class="l ut-'+r.use_type+'">'+lbl(r.use_type)+'</td>'
       +'<td>'+(r.accuracy||'')+'</td><td class="l"><span class="chip st-'+r.status+'">'+(r.status||'')+'</span></td>'
       +'<td>'+(r.area_tsubo||'')+'</td><td>'+yen(r.total_amount_incl)+'</td><td>'+(r.unit_price_tsubo_man?r.unit_price_tsubo_man+'万':'')+'</td>'
       +'<td class="l">'+(r.assigned_staff||'')+'</td><td class="l">'+(r.created_at||'').slice(0,10)+'</td>'
       +'<td class="l" style="white-space:nowrap"><button onclick="location.href=\'index.html?load='+r.id+'\'" style="padding:3px 8px;font-size:11px;background:#2f8f5b">📥開く</button> <button onclick="editRow(\''+r.id+'\')" style="padding:3px 8px;font-size:11px">✏️編集</button> <button onclick="delRow(\''+r.id+'\',\''+(r.customer_name||'').replace(/\x27/g,"")+'\')" style="padding:3px 8px;font-size:11px;background:#c0392b">🗑</button></td></tr>';
-  }).join('')||'<tr><td colspan="10" class="l" style="color:#888">該当データなし（見積アプリで保存すると貯まります）</td></tr>';}
+  }).join('')||'<tr><td colspan="11" class="l" style="color:#888">該当データなし（見積アプリで保存すると貯まります）</td></tr>';}
 
 // ===== 削除 =====
 async function delRow(id,name){if(!confirm('この活動を削除しますか？\n「'+name+'」\n※元に戻せません'))return;

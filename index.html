@@ -46,7 +46,7 @@ button.sec{background:#6b7a90}button:hover{opacity:.9}
     <div style="color:#888;font-size:11px;margin-top:10px">社内アカウントでログインしてください。</div>
   </div>
 </div>
-<header><h1>ハゼモト建設｜歯科クリニック 見積アプリ</h1><div class="sub">サーバ計算版（原価・単価はSupabase内で計算／ブラウザに出しません）　<a href="activities.html" style="color:#cfe0f5">📊 活動DB（蓄積ビュー）→</a>　<a href="#" onclick="doLogout();return false" style="color:#cfe0f5">ログアウト</a>　<span style="color:#8fa6c4;font-size:11px">版 2026-08-05i（古い表示なら ⌘/Ctrl+Shift+R）</span></div>
+<header><h1>ハゼモト建設｜歯科クリニック 見積アプリ</h1><div class="sub">サーバ計算版（原価・単価はSupabase内で計算／ブラウザに出しません）　<a href="activities.html" style="color:#cfe0f5">📊 活動DB（蓄積ビュー）→</a>　<a href="#" onclick="doLogout();return false" style="color:#cfe0f5">ログアウト</a>　<span style="color:#8fa6c4;font-size:11px">版 2026-08-05j（古い表示なら ⌘/Ctrl+Shift+R）</span></div>
 <div style="margin-top:8px;background:#1f7a4d;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;font-weight:700">
 🔒 社内限定｜このアプリは<u>原価・単価を持ちません</u>（サーバ側で計算）。URLは社内のみで共有してください。</div></header>
 <div class="wrap">
@@ -181,6 +181,7 @@ const PT={shinchiku:{genba:0.11,ippan:0.04,sekkei:0,usetype:'歯科新築',label
 const PDEF_SHINCHIKU={nobiyuka:'189.63',kenchiku:'144.08',tsubo:'57.24',shinsatsu:'5',kodomo:'0',kyosei:'1',xray:'1',xarea:'21',shodoku:'1',gikou:'1',tearai:'8',toilet:'3',ac_s:'6',ac_k:'8'};
 const PIDS=Object.keys(PDEF_SHINCHIKU);
 let CUR='shinchiku', OPTSTATE={}, LAST=null, timer=null;
+var LOADED_ID=null, QUOTE_NO='';
 let EDIT=false, ELINES=[], EMETA={};
 const num=id=>parseFloat(document.getElementById(id).value)||0;
 const yen=n=>'¥'+Math.round(n).toLocaleString('ja-JP');
@@ -294,6 +295,7 @@ function onType(){CUR=document.getElementById('ptype').value;const c=PT[CUR];
   if(CUR==='tenant'){dsel.disabled=false;dsel.style.opacity='';dnote.innerHTML='※解体工事(T02)の金額を増減します（居抜き/スケルトン/全面）。';}
   else{dsel.disabled=true;dsel.style.opacity='0.5';dnote.innerHTML='👉 この項目は<b>テナント内装 専用</b>です。上の【案件種別】を<b>「テナント内装」に変更</b>すると選べます（新築は解体工事なし）。';}
   document.getElementById('matup').value='0';document.getElementById('matrev').value='';
+  LOADED_ID=null;QUOTE_NO='';
   renderPresets();
   document.getElementById('ptypeNote').textContent='※'+c.label+'：'+c.note+(CUR==='tenant'?'（延床・室数を入力してください）':'');
   PIDS.forEach(id=>{document.getElementById(id).value=(CUR==='tenant')?'':(PDEF_SHINCHIKU[id]||'');});
@@ -321,13 +323,14 @@ async function saveActivity(){const msg=document.getElementById('act_msg');
       meta={genbaR:dd.genbaR,ippanR:dd.ippanR,sekkei:dd.sekkei,opt:dd.opt,tsubo:tsubo};
     }
   }catch(e){}
+  var agg=(EDIT&&ELINES.length)?editedAgg():LAST;
   const payload={source:'estimate-web',app_version:'web1',use_type:PT[CUR].usetype,customer_name:cust,
-    lines:snapLines,meta:meta,
+    lines:snapLines,meta:meta,parent_id:LOADED_ID||null,
     assigned_staff:(document.getElementById('act_staff').value||'').trim()||null,
     accuracy:document.getElementById('act_acc').value,status:document.getElementById('act_status').value,
     floor_area_m2:p.nobiyuka,building_area_m2:p.kenchiku,area_tsubo:p.tsubo,
-    total_amount_excl:LAST.work,total_amount_incl:LAST.incl,
-    unit_price_tsubo_man:tsubo?Math.round(LAST.work/tsubo/100)/100:null,
+    total_amount_excl:agg.work,total_amount_incl:agg.incl,
+    unit_price_tsubo_man:tsubo?Math.round(agg.work/tsubo/100)/100:null,
     params:{shinsatsu:p.shinsatsu,kyosei:p.kyosei,chair:p.chair,xray:p.xray,xarea:p.xarea,shodoku:p.shodoku,gikou:p.gikou,tearai:p.tearai,toilet:p.toilet,ac_s:p.ac_s,ac_k:p.ac_k,spec_factor:parseFloat(document.getElementById('specf').value)||1},
     assumptions:(document.getElementById('act_assume').value||'').trim()||null,
     unconfirmed:(document.getElementById('act_unconf').value||'').trim()||null};
@@ -335,7 +338,8 @@ async function saveActivity(){const msg=document.getElementById('act_msg');
   try{const r=await fetch(SB_URL+'/functions/v1/activities',{method:'POST',
       headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({action:'create',record:payload})});
     var rj=await r.json();if(!r.ok||rj.error)throw new Error(rj.error||('HTTP '+r.status));
-    msg.style.color='#375623';msg.textContent='✓ 活動DBに記録（'+PT[CUR].label+'／'+cust+'）';
+    QUOTE_NO=rj.quote_no||QUOTE_NO;var rv=(rj.revision&&rj.revision>1)?(' 改訂'+rj.revision):'';
+    msg.style.color='#375623';msg.textContent='✓ 記録（'+(rj.quote_no||'')+rv+'／'+cust+'）';
     ['act_customer','act_assume','act_unconf'].forEach(id=>document.getElementById(id).value='');
   }catch(e){msg.style.color='#c00000';msg.textContent='⚠ 保存失敗: '+e.message;}}
 
@@ -411,7 +415,7 @@ function makeProposal(){
    '<div class="meta">件名：'+kenmei+'　／　工事場所：別途打合せ</div>'+
    '<div class="meta">下記の通り御見積申し上げます。（本書は概算見積です）</div>'+
   '</div><div class="co">'+
-   '<div>見積日：'+ymd+'</div><div>有効期限：'+expymd+'</div>'+
+   (QUOTE_NO?'<div>見積No：'+QUOTE_NO+'</div>':'')+'<div>見積日：'+ymd+'</div><div>有効期限：'+expymd+'</div>'+
    '<div style="margin-top:5px"><b>ハゼモト建設株式会社</b></div>'+
    '<div>〒802-0064 北九州市小倉北区片野4-12-10</div>'+
    '<div>TEL 093-931-0521　登録番号 T8290801003082</div>'+
@@ -501,7 +505,7 @@ async function makeProposalDetail(){
   '<div class="top"><div><h1>御見積内訳書</h1><div class="to">'+cust+'　御中</div>'+
    '<div class="meta">件名：'+kenmei+'</div>'+
    '<div class="meta">延床 '+(p.nobiyuka||'-')+'㎡（'+(p.tsubo||'-')+'坪）／チェア '+(p.chair||'-')+'台</div></div>'+
-   '<div class="co"><div>見積日：'+ymd+'　有効期限：'+expymd+'</div>'+
+   '<div class="co"><div>'+(QUOTE_NO?'見積No：'+QUOTE_NO+'　':'')+'見積日：'+ymd+'　有効期限：'+expymd+'</div>'+
     '<div style="margin-top:4px"><b>ハゼモト建設株式会社</b></div><div>〒802-0064 北九州市小倉北区片野4-12-10</div>'+
     '<div>TEL 093-931-0521　登録番号 T8290801003082</div><div>代表取締役 櫨本 健一'+(staff?'　担当：'+staff:'')+'</div></div></div>'+
   '<div class="total"><div class="l2">御見積金額（税込）</div><div class="v">'+yen(incl)+'</div></div>'+
@@ -680,6 +684,7 @@ async function restoreActivity(id){var st=document.getElementById('status');st.t
     var hasLines=row.lines&&row.lines.length;
     EDIT=true; // onType()内のrun()(マスタ再計算)を抑止＝復元金額が上書きされないように
     document.getElementById('ptype').value=pt;onType();
+    LOADED_ID=id;QUOTE_NO=row.quote_no||'';
     var pr=row.params||{};var setv=function(k,v){var el=document.getElementById(k);if(el&&v!=null&&v!=='')el.value=v;};
     setv('nobiyuka',row.floor_area_m2);setv('kenchiku',row.building_area_m2);setv('tsubo',row.area_tsubo);
     setv('shinsatsu',pr.shinsatsu);setv('kyosei',pr.kyosei);setv('xray',pr.xray);setv('xarea',pr.xarea);
