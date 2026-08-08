@@ -46,7 +46,7 @@ button.sec{background:#6b7a90}button:hover{opacity:.9}
     <div style="color:#888;font-size:11px;margin-top:10px">社内アカウントでログインしてください。</div>
   </div>
 </div>
-<header><h1>ハゼモト建設｜歯科クリニック 見積アプリ</h1><div class="sub">サーバ計算版（原価・単価はSupabase内で計算／ブラウザに出しません）　<a href="activities.html" style="color:#cfe0f5">📊 活動DB（蓄積ビュー）→</a>　<a href="#" onclick="doLogout();return false" style="color:#cfe0f5">ログアウト</a>　<span style="color:#8fa6c4;font-size:11px">版 2026-08-05h（古い表示なら ⌘/Ctrl+Shift+R）</span></div>
+<header><h1>ハゼモト建設｜歯科クリニック 見積アプリ</h1><div class="sub">サーバ計算版（原価・単価はSupabase内で計算／ブラウザに出しません）　<a href="activities.html" style="color:#cfe0f5">📊 活動DB（蓄積ビュー）→</a>　<a href="#" onclick="doLogout();return false" style="color:#cfe0f5">ログアウト</a>　<span style="color:#8fa6c4;font-size:11px">版 2026-08-05i（古い表示なら ⌘/Ctrl+Shift+R）</span></div>
 <div style="margin-top:8px;background:#1f7a4d;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;font-weight:700">
 🔒 社内限定｜このアプリは<u>原価・単価を持ちません</u>（サーバ側で計算）。URLは社内のみで共有してください。</div></header>
 <div class="wrap">
@@ -677,6 +677,8 @@ async function restoreActivity(id){var st=document.getElementById('status');st.t
     var r=await fetch(SB_URL+'/functions/v1/activities',{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({action:'get',id:id})});
     var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
     var row=d.row;var pt=(row.use_type==='歯科新築')?'shinchiku':'tenant';
+    var hasLines=row.lines&&row.lines.length;
+    EDIT=true; // onType()内のrun()(マスタ再計算)を抑止＝復元金額が上書きされないように
     document.getElementById('ptype').value=pt;onType();
     var pr=row.params||{};var setv=function(k,v){var el=document.getElementById(k);if(el&&v!=null&&v!=='')el.value=v;};
     setv('nobiyuka',row.floor_area_m2);setv('kenchiku',row.building_area_m2);setv('tsubo',row.area_tsubo);
@@ -687,14 +689,16 @@ async function restoreActivity(id){var st=document.getElementById('status');st.t
     if(row.status)document.getElementById('act_status').value=row.status;
     if(row.accuracy)document.getElementById('act_acc').value=row.accuracy;
     setv('act_assume',row.assumptions);setv('act_unconf',row.unconfirmed);
-    if(row.lines&&row.lines.length){
+    if(hasLines){
       ELINES=row.lines.map(function(l){return {cat:l.cat||'',cattitle:l.cattitle||l.cat||'',name:l.name||'',spec:l.spec||'',unit:l.unit||'',qty:l.qty||0,price:l.price||0,amount:l.amount||Math.round((l.qty||0)*(l.price||0)),genkyo:l.genkyo||''};});
       EMETA=row.meta||{genbaR:PT[pt].genba,ippanR:PT[pt].ippan,sekkei:PT[pt].sekkei,opt:0,tsubo:row.area_tsubo};
-      EDIT=true;renderEdit();recalcEdit();
+      renderEdit();recalcEdit();
       document.getElementById('tbl').style.display='none';document.getElementById('editWrap').style.display='block';
-      st.innerHTML='📥 「'+(row.customer_name||'')+'」を復元しました（明細編集モード）。修正して「☁ 活動DBに保存」で改訂版を保存できます。';
-    }else{ run();st.innerHTML='📥 「'+(row.customer_name||'')+'」のパラメータを復元（明細なし→マスタで再計算）'; }
-  }catch(e){st.textContent='⚠ 復元失敗: '+e.message;run();}}
+      st.innerHTML='📥 「'+(row.customer_name||'')+'」を復元しました（保存時の明細・金額を再現）。修正して「☁ 活動DBに保存」で改訂版を保存できます。';
+    }else{ EDIT=false;await run();
+      st.innerHTML='📥 「'+(row.customer_name||'')+'」を復元。※保存時の明細が無いため<b>現在のマスタ単価で再計算</b>しています（保存時の税込 '+yen(row.total_amount_incl)+'）。';
+    }
+  }catch(e){EDIT=false;st.textContent='⚠ 復元失敗: '+e.message;run();}}
 renderPresets();
 (function(){if(CUR!=='tenant'){var ds=document.getElementById('demo');ds.disabled=true;ds.style.opacity='0.5';document.getElementById('demoNote').innerHTML='👉 この項目は<b>テナント内装 専用</b>です。上の【案件種別】を<b>「テナント内装」に変更</b>すると選べます（新築は解体工事なし）。';}})();
 initAuth();
