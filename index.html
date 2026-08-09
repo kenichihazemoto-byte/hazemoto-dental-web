@@ -46,7 +46,7 @@ button.sec{background:#6b7a90}button:hover{opacity:.9}
     <div style="color:#888;font-size:11px;margin-top:10px">社内アカウントでログインしてください。</div>
   </div>
 </div>
-<header><h1>ハゼモト建設｜歯科クリニック 見積アプリ</h1><div class="sub">サーバ計算版（原価・単価はSupabase内で計算／ブラウザに出しません）　<a href="activities.html" style="color:#cfe0f5">📊 活動DB→</a>　<a href="master.html" style="color:#cfe0f5">🛠 単価管理→</a>　<a href="#" onclick="doLogout();return false" style="color:#cfe0f5">ログアウト</a>　<span style="color:#8fa6c4;font-size:11px">版 2026-08-05k（古い表示なら ⌘/Ctrl+Shift+R）</span></div>
+<header><h1>ハゼモト建設｜歯科クリニック 見積アプリ</h1><div class="sub">サーバ計算版（原価・単価はSupabase内で計算／ブラウザに出しません）　<a href="activities.html" style="color:#cfe0f5">📊 活動DB→</a>　<a href="master.html" style="color:#cfe0f5">🛠 単価管理→</a>　<a href="#" onclick="doLogout();return false" style="color:#cfe0f5">ログアウト</a>　<span style="color:#8fa6c4;font-size:11px">版 2026-08-09a（営業サポート・電気容量表示 追加／古い表示なら ⌘/Ctrl+Shift+R）</span></div>
 <div style="margin-top:8px;background:#1f7a4d;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;font-weight:700">
 🔒 社内限定｜このアプリは<u>原価・単価を持ちません</u>（サーバ側で計算）。URLは社内のみで共有してください。</div></header>
 <div class="wrap">
@@ -131,6 +131,14 @@ button.sec{background:#6b7a90}button:hover{opacity:.9}
    <div class="row"><span>税抜 <b id="excl">-</b></span><span>坪単価 <b id="tsuboUnit">-</b></span><span>粗利率 <b id="margin">-</b></span></div><div id="specBadge"></div></div>
   <div id="valid"></div>
   <div id="diag"></div>
+  <details id="salesWrap" style="margin:8px 0;border:1px solid #cdd8e6;border-radius:8px;background:#fff" open>
+   <summary style="cursor:pointer;padding:9px 12px;font-size:13px;font-weight:700;color:#1f4e78;background:#eef3f8;border-radius:8px">🧭 営業サポート（計上漏れ防止・リスク開示・ヒアリング）</summary>
+   <div style="padding:10px 12px">
+    <div id="depGuide"></div>
+    <div id="issueGuide"></div>
+    <div id="hearGuide"></div>
+   </div>
+  </details>
   <div class="panel savebox">
    <h2 style="margin-top:0">③ この概算を「活動DB」に記録（1タップ）</h2>
    <div class="grid">
@@ -233,6 +241,7 @@ function render(d){
   const cM=chip(mg>=CF.mgLo&&mg<=CF.mgHi,mg>=CF.mgLo-0.03,'粗利率 '+(mg*100).toFixed(0)+'%');
   document.getElementById('valid').innerHTML='<div style="margin:8px 0;font-size:13px">妥当性【'+CF.label+'】: '+cT+' '+cS+' '+cSho+' '+cM+'</div>';
   diagnose(d,CF,tu,setPct,shoPct,mg);
+  try{salesSupport();}catch(e){}
 }
 function diagnose(d,CF,tu,setPct,shoPct,mg){
   var W=[]; // {sev:'warn'|'alert', msg}
@@ -260,6 +269,54 @@ function diagnose(d,CF,tu,setPct,shoPct,mg){
     +'<div style="font-size:12px;font-weight:700;color:#8a5a00;margin-bottom:4px">🩺 見積の自己診断（'+W.length+'件）</div>'
     +W.map(function(w){var col=w[0]==='alert'?'#c0392b':'#8a5a00';var ic=w[0]==='alert'?'⚠':'▲';return '<div style="font-size:11.5px;color:'+col+';line-height:1.5">'+ic+' '+w[1]+'</div>';}).join('')
     +'</div>';
+}
+// ===== 営業サポート：依存関係ガイド／潜在課題＋費用レンジ／ヒアリング =====
+function salesSupport(){
+  var p=params();
+  var eq={cadcam:num('e_cadcam'),miele:num('e_miele'),comp:num('e_comp'),blowp:num('e_blowp'),blows:num('e_blows'),ster:num('e_ster')};
+  // --- ① 依存関係ガイド（機器→必要工事の自動リマインド）---
+  var deps=[];
+  function dep(cond,ic,t,items){ if(cond) deps.push({ic:ic,t:t,items:items}); }
+  dep(p.chair>0,'🦷','診療チェア '+p.chair+'台',['各台へ給気・注水の給排水配管','各台に専用電源回路','各台へLAN配線（電子カルテ・口腔内カメラ）','吸引(バキューム)配管']);
+  dep(p.xray>0,'📸','レントゲン室 '+p.xray+'室',['放射線防護（鉛入ボード／鉛ガラス窓・防護扉）','専用電源回路（機種により200V）','「照射中」表示灯・インターロック','医療法：漏洩線量測定・使用届']);
+  dep(p.shodoku>0,'♨️','消毒・滅菌室',['オートクレーブ用200V専用回路','給排水（滅菌器・シンク）','局所排気・換気（熱／蒸気）','清潔／不潔ゾーニング']);
+  dep(p.gikou>0,'🔧','技工室',['石膏トラップ付き給排水','集塵・局所排気','研磨機等の動力／専用回路']);
+  dep(eq.cadcam>0,'💠','CAD/CAM（セレック等）',['専用電源回路','防振・水平設置','切削ミストの換気']);
+  dep(eq.miele>0,'🧼','ミーレ洗浄機',['給排水','200V専用回路']);
+  dep(eq.comp>0||eq.blowp>0||eq.blows>0,'💨','コンプ／ブロワ（機械室）',['防振・防音','ドレン排水','（3相機は）動力盤・専用回路']);
+  dep(p.tearai>0,'🚰','手洗い '+p.tearai+'箇所',['各所へ給排水・給湯','タッチレス水栓は電源']);
+  dep(p.toilet>0,'🚻','トイレ '+p.toilet+'室',['多目的／バリアフリー（手すり・幅員）','換気・給排水']);
+  var dh='<div style="font-size:12px;font-weight:700;color:#1f4e78;margin:2px 0 6px">🔗 依存関係ガイド（この機器なら、この工事が必要）</div>';
+  if(!deps.length){dh+='<div class="note">パラメータを入力すると必要工事を自動表示します。</div>';}
+  else dh+=deps.map(function(g){return '<div style="border:1px solid #e2e8f0;border-radius:6px;padding:5px 8px;margin:0 0 5px;font-size:11.5px">'
+    +'<b>'+g.ic+' '+g.t+'</b> → '+g.items.map(function(x){return '<span style="display:inline-block;background:#eef3f8;color:#33506f;border-radius:10px;padding:1px 7px;margin:2px 3px 0 0">'+x+'</span>';}).join('')+'</div>';}).join('');
+  document.getElementById('depGuide').innerHTML=dh;
+  // --- ② 潜在課題＋追加費用レンジ（リスク開示）---
+  var iss=[];
+  function ai(cond,label,range){ if(cond) iss.push([label,range]); }
+  ai(p.xray>0,'X線防護（鉛防護・防護扉）が明細に計上済みか要確認','該当時 +50〜150万/室');
+  var needC=Math.max(1,Math.ceil(p.chair/4));
+  ai(p.chair>=4&&eq.comp<needC,'チェア'+p.chair+'台に対しコンプ'+eq.comp+'台＝容量不足の可能性（目安 4台/1台）','増強 +30〜80万');
+  ai(p.chair>=4&&(eq.blowp+eq.blows)<needC,'チェア'+p.chair+'台に対し吸引(ブロワ)'+(eq.blowp+eq.blows)+'台＝サクション不足の可能性','増強 +40〜100万');
+  ai(p.gikou>0&&num('e_ackw')===0,'技工室・滅菌室の局所排気（換気増設）を要確認','該当時 +20〜60万');
+  ai(!window.__elecChecked,'電気容量が未チェック → 主幹増設・九電申請が発生する可能性','増設時 +30〜100万');
+  ai(true,'入口〜診療のバリアフリー（段差解消・多目的トイレ・自動ドア）','該当時 +50〜150万');
+  ai(p.chair>=5,'受付・待合の規模、床上げ配管ルートの取り回しを要確認','変動 +30〜120万');
+  var ih='<div style="font-size:12px;font-weight:700;color:#8a5a00;margin:10px 0 6px">⚠ 潜在課題＋追加費用レンジ（営業時のリスク開示用）</div>'
+    +'<div class="note" style="margin:0 0 5px">※基本明細に含む項目もあります。<b>「該当するか」を施主に確認</b>し、該当時のレンジを事前共有すると失注・赤字を防げます。</div>'
+    +'<table style="font-size:11px"><thead><tr><th class="l">確認すべき課題</th><th>追加費用の目安</th></tr></thead><tbody>'
+    +iss.map(function(x){return '<tr><td class="l">'+x[0]+'</td><td>'+x[1]+'</td></tr>';}).join('')+'</tbody></table>';
+  document.getElementById('issueGuide').innerHTML=ih;
+  // --- ③ 営業ヒアリング5項目＋提出前チェックリスト ---
+  var hb=document.getElementById('hearGuide');
+  if(!hb.getAttribute('data-built')){ hb.setAttribute('data-built','1');
+   var hear=['将来の拡張予定（チェア増設・分院化）はあるか','建物/区画の契約電気容量の上限は把握できているか','開業予定日・逆算スケジュール（許認可含む）','駐車場・動線・看板の計画','内装デザインの方向性（グレード・素材の希望）'];
+   var chk=['平面図で室配置・チェア位置を確認','電気容量チェックを実施（主幹A・動力盤）','X線防護の範囲・仕様を確認','給排水・空調・換気の計上を確認','解体区分（居抜き/スケルトン/全面）を確定','前提条件・未確認事項を活動DBに記録'];
+   hb.innerHTML='<div style="font-size:12px;font-weight:700;color:#1f4e78;margin:10px 0 6px">🎤 営業ヒアリング（確約前に確認する5項目）</div>'
+    +hear.map(function(t,i){return '<label class="opt" style="border-bottom:1px dashed #e2e8f0"><input type="checkbox"><span style="font-size:11.5px">'+(i+1)+'. '+t+'</span></label>';}).join('')
+    +'<div style="font-size:12px;font-weight:700;color:#1f7a4d;margin:10px 0 6px">✅ 提出前チェックリスト</div>'
+    +chk.map(function(t){return '<label class="opt" style="border-bottom:1px dashed #e2e8f0"><input type="checkbox"><span style="font-size:11.5px">'+t+'</span></label>';}).join('');
+  }
 }
 function buildOpts(av){const box=document.getElementById('optbox');
   if(!av.length){box.innerHTML='<div class="note">（テナント内装はオプションなし）</div>';return;}
@@ -635,16 +692,30 @@ async function checkPower(){window.__elecChecked=true;var el=document.getElement
     equipment:{chair:p.chair,xray:p.xray,cadcam:num('e_cadcam'),miele:num('e_miele'),compressor:num('e_comp'),blower_power:num('e_blowp'),blower_single:num('e_blows'),sterilizer:num('e_ster'),ac_kw:ackw}};
   try{var r=await fetch(SB_URL+'/functions/v1/power-capacity',{method:'POST',headers:{'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'},body:JSON.stringify(body)});
     var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
-    var warn=d.shortage?'<div style="color:#c00000;font-weight:700">⚠ 既存主幹 容量不足 → 増設・九電申請 要</div>':'';
-    el.innerHTML='<div style="background:#eef3f8;border:1px solid #9db4cf;border-radius:6px;padding:8px;font-size:12px;line-height:1.7">'
-      +'<b>電気容量サマリ（'+(body.mode==='new'?'新築':'改装')+'／空調'+ackw+'kW）</b><br>'
-      +'単相 '+d.single_kva+'kVA → 推奨主幹 <b>'+d.single_main_a+'A</b>／幹線 '+d.light_cable_sq+'sq<br>'
-      +'3相 '+d.three_kw+'kW → '+d.three_main_a+'A／動力盤 <b>'+(d.need_power_panel?'必要':'不要')+'</b>'+(d.power_cable_sq?'（幹線'+d.power_cable_sq+'sq）':'')+'<br>'
-      +'契約：'+d.contract.power+'<br>'+warn
+    var lightA=d.single_main_a||0, powerA=d.three_main_a||0, totalA=lightA+powerA;
+    var circ=d.power_circuits||0;
+    var warn=d.shortage?'<div style="color:#c00000;font-weight:700;margin-top:4px">⚠ 既存主幹 容量不足 → 増設・九電申請 要</div>':'';
+    el.innerHTML=
+      // 大きく分かりやすい総容量ヘッダー
+      '<div style="background:linear-gradient(135deg,#1f4e78,#2e75b6);color:#fff;border-radius:8px;padding:10px 12px;margin-bottom:6px">'
+      +'<div style="font-size:11px;opacity:.85">推定 総電気容量（'+(body.mode==='new'?'新築':'改装')+'／需要率0.5適用）</div>'
+      +'<div style="font-size:26px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums">約'+totalA+' A <span style="font-size:12px;font-weight:500;opacity:.85">（電灯'+lightA+'A＋動力'+powerA+'A）</span></div>'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;font-size:11px">'
+        +'<span style="background:rgba(255,255,255,.18);border-radius:10px;padding:2px 9px">単相主幹 <b>'+lightA+'A</b></span>'
+        +'<span style="background:rgba(255,255,255,.18);border-radius:10px;padding:2px 9px">三相主幹 <b>'+powerA+'A</b></span>'
+        +'<span style="background:rgba(255,255,255,.18);border-radius:10px;padding:2px 9px">動力盤 <b>'+(d.need_power_panel?'必要':'不要')+'</b></span>'
+        +(circ?'<span style="background:rgba(255,255,255,.18);border-radius:10px;padding:2px 9px">動力回路 <b>'+circ+'</b></span>':'')
+      +'</div></div>'
+      // 明細
+      +'<div style="background:#eef3f8;border:1px solid #9db4cf;border-radius:6px;padding:8px;font-size:12px;line-height:1.7">'
+      +'電灯（単相）：'+d.single_kva+'kVA → 主幹 <b>'+lightA+'A</b>／幹線 '+d.light_cable_sq+'sq<br>'
+      +'動力（三相）：'+d.three_kw+'kW → 主幹 <b>'+powerA+'A</b>'+(d.power_cable_sq?'／幹線'+d.power_cable_sq+'sq':'')+'<br>'
+      +'推奨契約：'+d.contract.light+' / '+d.contract.power+warn+'<br>'
       +'電気設備 目安総額 <b>'+yen(d.elec_total)+'</b>（東京技研実単価）<br>'
       +'<span style="color:#555;font-size:11px">内訳：電灯部'+yen(d.elec_breakdown['電灯_配線_器具'])+'／幹線・動力'+yen(d.elec_breakdown['幹線_動力ケーブル'])+'／盤類'+yen(d.elec_breakdown['盤類'])+(d.elec_breakdown['引込受電']?'／引込'+yen(d.elec_breakdown['引込受電']):'')+'</span><br>'
       +'<button style="margin:2px 0 0" onclick="document.getElementById(\'elec_override\').value='+d.elec_total+';run();">この目安を電気設備に反映</button>'
       +'<div style="color:#888;margin-top:4px">'+d.notes.join('／')+'</div></div>';
+    try{salesSupport();}catch(e){}
   }catch(e){el.innerHTML='⚠ '+e.message;}}
 function toB64(f){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result.split(',')[1]);};r.onerror=rej;r.readAsDataURL(f);});}
 var BKEYS=['nobiyuka','kenchiku','tsubo','shinsatsu','kodomo','kyosei','xray','xarea','shodoku','gikou','tearai','toilet','ac_s','ac_k'];
