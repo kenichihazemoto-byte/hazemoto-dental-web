@@ -48,7 +48,7 @@ input.price.dirty{border-color:#dd8b1a;background:#fff8e8}
     <button id="histBtn" onclick="toggleHistory()" style="background:#5a6b7c">📜 改定履歴</button>
     <span id="status" class="note"></span>
   </div>
-  <div class="note" style="margin:6px 0">※単価（税抜・売価）を直接改定できます。変更した欄は黄色く表示され、「保存」で全マスタに即反映（全見積に反映）。原価は売価×(1−工種粗利率)で自動算出されます。</div>
+  <div class="note" style="margin:6px 0">※<b>売単価</b>と<b>実原価</b>を直接改定できます。実原価を入れると<b>粗利率が実額で算出</b>されます（未登録なら売価×(1−工種粗利率)の逆算）。<b>市場比</b>は市場単価との差で、緑=±15%以内／橙=±40%以内／赤=それ以上。「⇐反映」で市場単価を売単価に入れられます。変更は黄色く表示され「保存」で確定（履歴に残ります）。</div>
   <div id="list"></div>
   <div id="surbox"></div>
   <div id="histbox"></div>
@@ -60,7 +60,7 @@ const APP_TOKEN="hzmt-dental-8f3a2c";
 const sbAuth=window.supabase.createClient(SB_URL,PUB_KEY);
 let AUTHTOKEN=PUB_KEY;
 var DATA={items:[],cats:[],options:[],surcharges:[],isAdmin:false};
-var DIRTY={}, DIRTY_SUR={};
+var DIRTY={}, DIRTY_SUR={}, DIRTY_COST={};
 const yen=n=>Number(n||0).toLocaleString('ja-JP');
 function api(){return {'apikey':PUB_KEY,'Authorization':'Bearer '+AUTHTOKEN,'x-app-token':APP_TOKEN,'Content-Type':'application/json'};}
 async function initAuth(){var s=(await sbAuth.auth.getSession()).data.session;
@@ -72,10 +72,10 @@ async function doLogin(){var m=document.getElementById('loginMsg');m.textContent
   if(error){m.textContent='ログイン失敗：'+error.message;return;}
   AUTHTOKEN=data.session.access_token;document.getElementById('loginOverlay').style.display='none';load();}
 async function doLogout(){await sbAuth.auth.signOut();location.reload();}
-async function load(){var st=document.getElementById('status');st.textContent='読込中…';DIRTY={};DIRTY_SUR={};
+async function load(){var st=document.getElementById('status');st.textContent='読込中…';DIRTY={};DIRTY_SUR={};DIRTY_COST={};
   try{var r=await fetch(SB_URL+'/functions/v1/master',{method:'POST',headers:api(),body:JSON.stringify({action:'list'})});
     var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
-    DATA=d;st.textContent='';
+    DATA=d;buildMkt();st.textContent='';
     document.getElementById('adminNote').innerHTML=d.isAdmin?'<div class="warn">✅ 管理者モード（櫨本代表）：単価を改定して保存できます。</div>':'<div class="warn">👀 閲覧のみ：単価の改定・保存は<b>管理者（櫨本代表 ken@hazemoto-k.co.jp）</b>のログイン時のみ可能です。</div>';
     render();renderSur();updateDirty();
   }catch(e){st.textContent='⚠ '+e.message;}}
@@ -85,10 +85,19 @@ function render(){var use=document.getElementById('fUse').value;var q=(document.
   cats.forEach(function(c){
     var its=DATA.items.filter(function(i){return i.use_type===use&&i.cat===c.cat&&(!q||(i.name||'').indexOf(q)>=0);});
     if(!its.length)return;
-    h+='<div class="catbox"><div class="cathead">'+c.cat+'　'+c.title+'</div><table><thead><tr><th>名称</th><th>単位</th><th class="r">単価(税抜)</th><th>数量根拠</th></tr></thead><tbody>';
+    h+='<div class="catbox"><div class="cathead">'+c.cat+'　'+c.title+'</div><table><thead><tr><th>名称</th><th>単位</th><th class="r">売単価(税抜)</th><th class="r">実原価</th><th class="r">粗利率</th><th class="r">市場単価</th><th class="r">市場比</th><th>根拠</th></tr></thead><tbody>';
     its.forEach(function(i){var v=(DIRTY[i.id]!=null)?DIRTY[i.id]:i.sell_unit_price;
+      var cv=(DIRTY_COST[i.id]!=null)?DIRTY_COST[i.id]:i.cost_unit_price;
+      var mg=(cv!=null&&v>0)?Math.round(1000*(v-cv)/v)/10:null;
+      var mk=MKTBY[i.market_id];
+      var gap=(mk&&mk.market_unit_price>0)?Math.round(1000*(v-mk.market_unit_price)/mk.market_unit_price)/10:null;
+      var gc=(gap==null)?'#888':(Math.abs(gap)<=15?'#2f8f5b':(Math.abs(gap)<=40?'#dd8b1a':'#c00000'));
       h+='<tr><td>'+i.name+(i.spec?'<br><span style="color:#aaa;font-size:10px">'+i.spec+'</span>':'')+'</td><td>'+(i.unit||'')+'</td>'
         +'<td class="r"><input class="price'+(DIRTY[i.id]!=null?' dirty':'')+'" type="number" value="'+v+'" data-id="'+i.id+'" '+(DATA.isAdmin?'':'disabled')+' oninput="onPrice(this)"></td>'
+        +'<td class="r"><input class="price'+(DIRTY_COST[i.id]!=null?' dirty':'')+'" type="number" value="'+(cv==null?'':cv)+'" placeholder="未登録" data-cost="'+i.id+'" title="'+(i.cost_source||'協力業者の実見積を入れると粗利率が実額で出ます')+'" '+(DATA.isAdmin?'':'disabled')+' oninput="onCost(this)" style="width:100px"></td>'
+        +'<td class="r" style="font-weight:700;color:'+(mg==null?'#bbb':(mg>=25?'#2f8f5b':(mg>=15?'#dd8b1a':'#c00000')))+'">'+(mg==null?'—':mg+'%')+'</td>'
+        +'<td class="r" style="color:#666">'+(mk?yen(mk.market_unit_price):'—')+'</td>'
+        +'<td class="r" style="color:'+gc+';font-weight:600">'+(gap==null?'—':((gap>0?'+':'')+gap+'%'+(DATA.isAdmin?' <a href="#" onclick="applyMarket(\''+i.id+'\','+mk.market_unit_price+');return false" title="市場単価を売単価に反映" style="font-size:10px">⇐反映</a>':'')))+'</td>'
         +'<td style="color:#888;font-size:11px">'+(i.genkyo||'')+'</td></tr>';});
     h+='</tbody></table></div>';
   });
@@ -108,16 +117,25 @@ function renderSur(){var use=document.getElementById('fUse').value;
     h+='<tr><td>'+x.cat+'</td><td class="r"><input class="price'+(DIRTY_SUR[x.id]!=null?' dirty':'')+'" type="number" step="0.5" value="'+v+'" data-sur="'+x.id+'" '+(DATA.isAdmin?'':'disabled')+' oninput="onSur(this)"></td><td style="color:#888;font-size:11px">'+(x.note||'')+'</td></tr>';});
   h+='</tbody></table></div>';document.getElementById('surbox').innerHTML=h;
 }
+var MKTBY={};
+function buildMkt(){MKTBY={};(DATA.markets||[]).forEach(function(m){var p=MKTBY[m.id];if(!p||String(m.surveyed_at)>String(p.surveyed_at))MKTBY[m.id]=m;});}
+function onCost(el){var id=el.getAttribute('data-cost');var t=el.value.trim();
+  DIRTY_COST[id]=(t==='')?null:parseFloat(t);el.classList.add('dirty');updateDirty();render();}
+function applyMarket(id,v){DIRTY[id]=v;render();updateDirty();
+  document.getElementById('status').textContent='市場単価を売単価に入れました（保存で確定）';}
 function onPrice(el){var id=el.getAttribute('data-id'),op=el.getAttribute('data-op');var val=parseFloat(el.value);
   if(op){DIRTY['op_'+op]=val;el.dataset.k='op_'+op;}else{DIRTY[id]=val;}
   el.classList.add('dirty');updateDirty();}
 function onSur(el){var id=el.getAttribute('data-sur');DIRTY_SUR[id]=parseFloat(el.value);el.classList.add('dirty');updateDirty();}
-function updateDirty(){var n=Object.keys(DIRTY).length+Object.keys(DIRTY_SUR).length;
+function updateDirty(){var n=Object.keys(DIRTY).length+Object.keys(DIRTY_SUR).length+Object.keys(DIRTY_COST).length;
   document.getElementById('dirtyCount').textContent=n?('未保存 '+n+'件'):'';
   document.getElementById('saveBtn').disabled=(!DATA.isAdmin||n===0);}
 async function saveAll(){var st=document.getElementById('status');st.textContent='保存中…';
   var items=[],options=[],surcharges=[];
-  Object.keys(DIRTY).forEach(function(k){if(k.indexOf('op_')===0)options.push({id:k.slice(3),sell_unit_price:DIRTY[k]});else items.push({id:k,sell_unit_price:DIRTY[k]});});
+  var byId={};
+  Object.keys(DIRTY).forEach(function(k){if(k.indexOf('op_')===0)options.push({id:k.slice(3),sell_unit_price:DIRTY[k]});else{byId[k]=byId[k]||{id:k};byId[k].sell_unit_price=DIRTY[k];}});
+  Object.keys(DIRTY_COST).forEach(function(k){byId[k]=byId[k]||{id:k};byId[k].cost_unit_price=DIRTY_COST[k];byId[k].cost_source='社長改定 '+new Date().toISOString().slice(0,10);});
+  Object.keys(byId).forEach(function(k){items.push(byId[k]);});
   Object.keys(DIRTY_SUR).forEach(function(k){surcharges.push({id:k,pct:DIRTY_SUR[k]});});
   try{var r=await fetch(SB_URL+'/functions/v1/master',{method:'POST',headers:api(),body:JSON.stringify({action:'save',items:items,options:options,surcharges:surcharges,note:(document.getElementById('fNote').value||'').trim()})});
     var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
