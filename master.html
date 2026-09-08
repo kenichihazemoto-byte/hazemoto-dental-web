@@ -43,12 +43,15 @@ input.price.dirty{border-color:#dd8b1a;background:#fff8e8}
     <input id="fSearch" placeholder="名称で絞り込み" oninput="render()" style="width:180px">
     <span style="flex:1"></span>
     <span id="dirtyCount" class="note"></span>
+    <input id="fNote" placeholder="改定理由（例：松尾板金 実見積2026-08）" title="保存時に履歴へ残ります" style="width:230px">
     <button class="save" id="saveBtn" onclick="saveAll()" disabled>💾 変更を保存</button>
+    <button id="histBtn" onclick="toggleHistory()" style="background:#5a6b7c">📜 改定履歴</button>
     <span id="status" class="note"></span>
   </div>
   <div class="note" style="margin:6px 0">※単価（税抜・売価）を直接改定できます。変更した欄は黄色く表示され、「保存」で全マスタに即反映（全見積に反映）。原価は売価×(1−工種粗利率)で自動算出されます。</div>
   <div id="list"></div>
   <div id="surbox"></div>
+  <div id="histbox"></div>
 </div>
 <script>
 const SB_URL="https://rrfeqnzxhbxntyewgeyj.supabase.co";
@@ -116,9 +119,27 @@ async function saveAll(){var st=document.getElementById('status');st.textContent
   var items=[],options=[],surcharges=[];
   Object.keys(DIRTY).forEach(function(k){if(k.indexOf('op_')===0)options.push({id:k.slice(3),sell_unit_price:DIRTY[k]});else items.push({id:k,sell_unit_price:DIRTY[k]});});
   Object.keys(DIRTY_SUR).forEach(function(k){surcharges.push({id:k,pct:DIRTY_SUR[k]});});
-  try{var r=await fetch(SB_URL+'/functions/v1/master',{method:'POST',headers:api(),body:JSON.stringify({action:'save',items:items,options:options,surcharges:surcharges})});
+  try{var r=await fetch(SB_URL+'/functions/v1/master',{method:'POST',headers:api(),body:JSON.stringify({action:'save',items:items,options:options,surcharges:surcharges,note:(document.getElementById('fNote').value||'').trim()})});
     var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
-    st.textContent='✅ '+d.updated+'件を保存しました（全見積に反映）';load();
+    st.textContent='✅ '+d.updated+'件を保存しました（履歴に'+(d.logged||0)+'件記録）';document.getElementById('fNote').value='';HIST_OPEN=false;load();
   }catch(e){st.textContent='⚠ 保存失敗: '+e.message;}}
+var HIST_OPEN=false;
+function toggleHistory(){HIST_OPEN=!HIST_OPEN;if(!HIST_OPEN){document.getElementById('histbox').innerHTML='';return;}loadHistory();}
+async function loadHistory(){var box=document.getElementById('histbox');box.innerHTML='<div class="note">履歴を読込中…</div>';
+  try{var r=await fetch(SB_URL+'/functions/v1/master',{method:'POST',headers:api(),body:JSON.stringify({action:'history',limit:300})});
+    var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
+    var use=document.getElementById('fUse').value;
+    var rows=(d.logs||[]).filter(function(x){return !x.use_type||x.use_type===use;});
+    if(!rows.length){box.innerHTML='<div class="catbox"><div class="cathead">📜 改定履歴</div><div class="note" style="padding:10px">この用途の履歴はまだありません。</div></div>';return;}
+    var h='<div class="catbox"><div class="cathead">📜 改定履歴（新しい順・最大300件）</div><table><thead><tr><th>日時</th><th>実施者</th><th>工種</th><th>対象</th><th>項目</th><th class="r">旧</th><th class="r">新</th><th>理由</th></tr></thead><tbody>';
+    rows.forEach(function(x){
+      var dt=(x.changed_at||'').replace('T',' ').slice(5,16);
+      var ov=x.old_value||'',nv=x.new_value||'';
+      var num=(x.field==='sell_unit_price'||x.field==='単価合計');
+      h+='<tr><td style="white-space:nowrap">'+dt+'</td><td style="font-size:11px">'+(x.changed_by||'')+'</td><td>'+(x.cat||'')+'</td><td>'+(x.name||'')+'</td><td style="font-size:11px">'+(x.field||'')+'</td>'
+        +'<td class="r" style="color:#888">'+(num?yen(ov):ov)+'</td><td class="r" style="font-weight:700">'+(num?yen(nv):nv)+'</td>'
+        +'<td style="color:#888;font-size:11px">'+(x.note||'')+'</td></tr>';});
+    h+='</tbody></table></div>';box.innerHTML=h;
+  }catch(e){box.innerHTML='<div class="warn">⚠ 履歴の取得に失敗: '+e.message+'</div>';}}
 initAuth();
 </script></body></html>
