@@ -198,7 +198,11 @@ const man=n=>(n/10000).toFixed(1)+'万';
 function params(){const shinsatsu=num('shinsatsu')+num('kodomo');const kyosei=num('kyosei');
   return {nobiyuka:num('nobiyuka'),kenchiku:num('kenchiku'),tsubo:num('tsubo'),shinsatsu:shinsatsu,kyosei:kyosei,
     chair:shinsatsu+kyosei,xray:num('xray'),xarea:num('xarea'),shodoku:num('shodoku'),gikou:num('gikou'),
-    tearai:num('tearai'),toilet:num('toilet'),ac_s:num('ac_s'),ac_k:num('ac_k')};}
+    tearai:num('tearai'),toilet:num('toilet'),ac_s:num('ac_s'),ac_k:num('ac_k'),
+    mainA:(window.__elec&&window.__elec.mainA)||0,
+    powerA:(window.__elec&&window.__elec.powerA)||0,
+    needPanel:(window.__elec?window.__elec.needPanel:null),
+    powerCircuits:(window.__elec&&window.__elec.circuits)||0};}
 
 function reqBody(){const gm=document.getElementById('gmargin').value;
   return {use_type:CUR,params:params(),gmargin:gm===''?null:parseFloat(gm),
@@ -694,6 +698,8 @@ async function checkPower(){window.__elecChecked=true;var el=document.getElement
     var d=await r.json();if(!r.ok||d.error)throw new Error(d.error||('HTTP '+r.status));
     var lightA=d.single_main_a||0, powerA=d.three_main_a||0, totalA=lightA+powerA;
     var circ=d.power_circuits||0;
+    window.__elec={mainA:lightA,powerA:powerA,circuits:circ,needPanel:(d.need_power_panel?1:0)};
+    try{run();}catch(e){}
     var warn=d.shortage?'<div style="color:#c00000;font-weight:700;margin-top:4px">⚠ 既存主幹 容量不足 → 増設・九電申請 要</div>':'';
     el.innerHTML=
       // 大きく分かりやすい総容量ヘッダー
@@ -713,7 +719,8 @@ async function checkPower(){window.__elecChecked=true;var el=document.getElement
       +'推奨契約：'+d.contract.light+' / '+d.contract.power+warn+'<br>'
       +'電気設備 目安総額 <b>'+yen(d.elec_total)+'</b>（東京技研実単価）<br>'
       +'<span style="color:#555;font-size:11px">内訳：電灯部'+yen(d.elec_breakdown['電灯_配線_器具'])+'／幹線・動力'+yen(d.elec_breakdown['幹線_動力ケーブル'])+'／盤類'+yen(d.elec_breakdown['盤類'])+(d.elec_breakdown['引込受電']?'／引込'+yen(d.elec_breakdown['引込受電']):'')+'</span><br>'
-      +'<button style="margin:2px 0 0" onclick="document.getElementById(\'elec_override\').value='+d.elec_total+';run();">この目安を電気設備に反映</button>'
+      +'<div style="background:#e8f5ec;border:1px solid #2f8f5b;border-radius:5px;padding:5px 8px;margin:5px 0;color:#1e5c3a;font-size:11px">✓ <b>分電盤に自動反映しました</b>（主幹'+lightA+'A・動力盤'+(d.need_power_panel?'あり':'なし')+'）。A.15の「電灯分電盤（主幹容量比例）」が'+lightA+'Aで再計算されています。</div>'
+      +'<button style="margin:2px 0 0" onclick="document.getElementById(\'elec_override\').value='+d.elec_total+';run();">電気設備の総額もこの目安で上書きする</button>'
       +'<div style="color:#888;margin-top:4px">'+d.notes.join('／')+'</div></div>';
     try{salesSupport();}catch(e){}
   }catch(e){el.innerHTML='⚠ '+e.message;}}
